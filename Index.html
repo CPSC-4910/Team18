@@ -1,51 +1,114 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>Team 18 About Page</title>
     <style>
+        /* General Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-            background-color: #f9f9f9;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(to bottom right, #f0f7ff, #ffffff);
             color: #333;
+            line-height: 1.6;
+            padding: 20px;
         }
-        h1 {
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background: #0073e6;
+            color: #fff;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            font-size: 1.8rem;
+        }
+
+        .login-btn {
+            background: #fff;
             color: #0073e6;
-            text-align: center;
+            border: none;
+            padding: 10px 18px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
         }
+
+        .login-btn:hover {
+            background: #005bb5;
+            color: #fff;
+            transform: scale(1.05);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+        }
+
         .section {
             margin-bottom: 25px;
-            padding: 15px;
+            padding: 20px;
             background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s ease;
         }
+
+        .section:hover {
+            transform: translateY(-3px);
+        }
+
         .section h2 {
             color: #005bb5;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #e6f0ff;
+            padding-bottom: 5px;
         }
+
         .section p {
-            margin: 5px 0;
+            margin: 8px 0;
+            font-size: 1rem;
         }
     </style>
 </head>
 <body>
-    <h1>Team 18 About Page</h1>
 
-    <div class="section">
-        <h2>Team Information</h2>
-        <p><strong>Team #:</strong> 18</p>
-        <p><strong>Version # (Sprint #):</strong> 1</p>
-        <p><strong>Release Date:</strong> 09/15/2025</p>
+    <header>
+        <h1>Team 18 - About Page</h1>
+        <button class="login-btn" onclick="window.location.href='login.html'">Login</button>
+    </header>
+
+    <div class="container">
+        <div class="section">
+            <h2>Team Information</h2>
+            <p><strong>Team #:</strong> 18</p>
+            <p><strong>Version # (Sprint #):</strong> 1</p>
+            <p><strong>Release Date:</strong> 09/15/2025</p>
+        </div>
+
+        <div class="section">
+            <h2>Product Information</h2>
+            <p><strong>Product Name:</strong> Truck Points</p>
+            <p><strong>Product Description:</strong> This service is an online portal
+                to help enhance the trucking experience. Our service allows truckers to
+                partner with sponsors, review their driving performance, and earn points
+                with monetary value. Drivers can then redeem those points for items from
+                their sponsor's catalog of rewards.</p>
+        </div>
     </div>
 
-    <div class="section">
-        <h2>Product Information</h2>
-        <p><strong>Product Name:</strong> Truck Points</p>
-        <p><strong>Product Description:</strong> This service is an online portal
-             to help enhance the trucking experience. Our service will allow truckers to be
-             partnered with a sponsor to review their driving performance and be rewarded
-             with "points" with an attached monetary value. Drivers can then use those points
-             to purchase items off a catlog of the sponsors choice.</p>
-    </div>
 </body>
 </html>
