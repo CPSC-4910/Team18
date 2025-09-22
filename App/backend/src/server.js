@@ -1,33 +1,22 @@
-//Example server.js
-import express from "express";
-import dotenv from "dotenv";
-import sequelize from "./config/database.js";
-import userRoutes from "./routes/userRoutes.js";
+const express = require("express");
+const path = require("path");
 
-dotenv.config();
 const app = express();
+const PORT = 3000;
 
-// Middleware
-app.use(express.json());
+// Serve static frontend files
+app.use(express.static(path.join(__dirname, "../../frontend/public")));
 
-// API routes
-app.use("/api/users", userRoutes);
+// Example API endpoint
+app.get("/api/hello", (req, res) => {
+  res.json({ message: "Hello from the backend!" });
+});
 
-// Test DB connection + start server
-const PORT = process.env.PORT || 5000;
+// Fallback for single-page apps
+app.get((req, res) => {
+  res.sendFile(path.join(__dirname, "../../frontend/public/index.html"));
+});
 
-(async () => {
-  try {
-    await sequelize.authenticate();
-    console.log("Connected to RDS database");
-
-    await sequelize.sync(); // creates tables if not exist
-    console.log("Database synced");
-
-    app.listen(PORT, () =>
-      console.log(`Server running on http://localhost:${PORT}`)
-    );
-  } catch (error) {
-    console.error("Unable to connect to the database:", error);
-  }
-})();
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
