@@ -3,12 +3,16 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Example for Postgres (change dialect to 'mysql' for MySQL)
-const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD, {
-  host: process.env.DB_HOST,
-  dialect: "postgres",  // or "mysql"
-  port: process.env.DB_PORT || 5432,
-  logging: false,
-});
+const sequelize = new Sequelize(
+  process.env.DB_NAME,
+  process.env.DB_USER,
+  process.env.DB_PASSWORD,
+  {
+    host: process.env.DB_HOST,
+    dialect: "postgres",  // or "mysql"
+    port: process.env.DB_PORT || 5432,
+    logging: false,
+  }
+);
 
 export default sequelize;
