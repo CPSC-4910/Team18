@@ -1,22 +1,28 @@
-const express = require("express");
-const path = require("path");
+// backend/src/server.js
+import express from "express";
+import cors from "cors";
+import sequelize from "./config/database.js";
 
 const app = express();
-const PORT = 3000;
+app.use(cors()); // allows requests from frontend
+app.use(express.json());
 
-// Serve static frontend files
-app.use(express.static(path.join(__dirname, "../../frontend/public")));
-
-// Example API endpoint
-app.get("/api/hello", (req, res) => {
-  res.json({ message: "Hello from the backend!" });
+// API endpoints
+app.get("/api", (req, res) => {
+  res.send("Backend server is running");
 });
 
-// Fallback for single-page apps
-app.get((req, res) => {
-  res.sendFile(path.join(__dirname, "../../frontend/public/index.html"));
+app.get("/api/test-db", async (req, res) => {
+  try {
+    await sequelize.authenticate();
+    res.send("Database connection successful");
+  } catch (err) {
+    console.error("Database connection error:", err);
+    res.status(500).send("Database connection failed");
+  }
 });
 
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+  console.log(`Backend server running on port ${PORT}`);
 });
