@@ -1,7 +1,7 @@
 // App/frontend/src/components/LoginView.jsx
 import React, { useState } from "react";
 
-export default function LoginView({ show }) {
+export default function LoginView({ show, onLoginSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
