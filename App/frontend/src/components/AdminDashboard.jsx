@@ -8,24 +8,15 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // Sample data - replace with API calls later
   const stats = [
-    { label: "Total Drivers", value: "1,234", change: "+12%", icon: Users, color: "bg-blue-500" },
-    { label: "Active Sponsors", value: "45", change: "+5%", icon: Package, color: "bg-green-500" },
-    { label: "Points Issued", value: "2.4M", change: "+18%", icon: Award, color: "bg-purple-500" },
-    { label: "Redemptions", value: "$125K", change: "+23%", icon: ShoppingCart, color: "bg-orange-500" }
+
   ];
 
   const recentDrivers = [
-    { id: 1, name: "John Smith", email: "john.smith@trucking.com", points: 1250, status: "Active", joined: "2025-09-15" },
-    { id: 2, name: "Sarah Johnson", email: "sarah.j@freight.com", points: 890, status: "Active", joined: "2025-09-20" },
-    { id: 3, name: "Mike Davis", email: "mdavis@logistics.com", points: 2340, status: "Active", joined: "2025-08-10" },
-    { id: 4, name: "Emily Chen", email: "echen@transport.com", points: 560, status: "Inactive", joined: "2025-09-01" }
+
   ];
 
   const recentActivity = [
-    { id: 1, type: "redemption", user: "John Smith", action: "Redeemed 500 points for Gift Card", time: "2 hours ago" },
-    { id: 2, type: "points", user: "Sarah Johnson", action: "Earned 50 points for safe driving", time: "5 hours ago" },
-    { id: 3, type: "signup", user: "Mike Davis", action: "New driver registered", time: "1 day ago" },
-    { id: 4, type: "sponsor", user: "Acme Logistics", action: "Updated catalog with 15 new items", time: "2 days ago" }
+
   ];
 
   const renderOverview = () => (
@@ -157,9 +148,7 @@ export default function AdminDashboard({ user, onLogout }) {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
-            { name: "Acme Logistics", products: 45, active: true },
-            { name: "FedEx Freight", products: 32, active: true },
-            { name: "Swift Transportation", products: 28, active: false }
+
           ].map((sponsor, idx) => (
             <div key={idx} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between">
@@ -194,10 +183,7 @@ export default function AdminDashboard({ user, onLogout }) {
         <h2 className="text-xl font-bold text-gray-900 mb-6">Reports & Analytics</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { title: "Points Distribution Report", desc: "View how points are distributed across drivers" },
-            { title: "Redemption Analytics", desc: "Analyze redemption patterns and popular items" },
-            { title: "Driver Performance", desc: "Track safe driving metrics and trends" },
-            { title: "Sponsor ROI Report", desc: "Monitor sponsor program effectiveness" }
+
           ].map((report, idx) => (
             <div key={idx} className="border border-gray-200 rounded-lg p-5 hover:border-blue-300 transition-colors cursor-pointer">
               <h3 className="font-semibold text-gray-900 mb-2">{report.title}</h3>
@@ -220,14 +206,7 @@ export default function AdminDashboard({ user, onLogout }) {
           <div className="pb-4 border-b border-gray-200">
             <h3 className="font-semibold text-gray-900 mb-2">Points Configuration</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Points per Dollar Value</label>
-                <input type="number" defaultValue="100" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Safe Driving Bonus Points</label>
-                <input type="number" defaultValue="50" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-              </div>
+
             </div>
           </div>
           <div className="pb-4 border-b border-gray-200">

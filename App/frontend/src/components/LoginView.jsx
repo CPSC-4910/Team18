@@ -38,12 +38,10 @@ export default function LoginView({ show, onLoginSuccess }) {
         // Login successful!
         setMessage(`✓ Success! Welcome back, ${data.user.username}!`);
         
-        // TODO: Save user data and redirect to dashboard
-        // For now, just show success message
-        console.log("Logged in user:", data.user);
-        
-        // You can redirect or show a dashboard here
-        // setTimeout(() => show("dashboard"), 1500);
+        // Call the success callback to switch to dashboard
+        setTimeout(() => {
+          onLoginSuccess(data.user);
+        }, 800);
       } else {
         // Login failed
         setMessage(`✗ ${data.error || "Login failed"}`);
