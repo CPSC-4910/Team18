@@ -6,14 +6,28 @@ const User = sequelize.define("User", {
     type: DataTypes.STRING(50),
     allowNull: false,
     primaryKey: true,
+    unique: true,
+  },
+  email: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true,
+    },
   },
   password: {
     type: DataTypes.STRING(255),
     allowNull: false,
   },
+  created_at: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+    field: 'created_at',
+  },
 }, {
-  tableName: "users",   // ensure Sequelize uses the exact table name
-  timestamps: false,    // no createdAt / updatedAt columns in your table
+  tableName: "users",
+  timestamps: false, // We're manually handling created_at
 });
 
 export default User;
