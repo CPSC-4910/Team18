@@ -13,6 +13,6 @@ bcrypt.hash(password, saltRounds, (err, hash) => {
   console.log('Original password:', password);
   console.log('Hashed password:', hash);
   console.log('\nSQL UPDATE command:');
-  console.log(UPDATE users SET password = '${hash}' WHERE username = 'admin1';);
+  console.log(`UPDATE users SET password = '${hash}' WHERE username = 'admin1';`);
   console.log('===============================\n');
 });

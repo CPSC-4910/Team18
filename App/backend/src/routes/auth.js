@@ -1,6 +1,8 @@
+// App/backend/src/routes/auth.js
 import express from "express";
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
+import { Op } from "sequelize";
 
 const router = express.Router();
 
@@ -21,7 +23,7 @@ router.post("/api/signup", async (req, res) => {
     // Check if username or email already exists
     const existingUser = await User.findOne({
       where: {
-        [sequelize.Sequelize.Op.or]: [
+        [Op.or]: [
           { username: username },
           { email: email }
         ]
