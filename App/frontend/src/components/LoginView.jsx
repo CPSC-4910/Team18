@@ -1,6 +1,9 @@
 // App/frontend/src/components/LoginView.jsx
 import React, { useState } from "react";
 
+// Use environment variable for API URL, fallback to proxy for local dev
+const API_URL = import.meta.env.VITE_API_URL || "";
+
 export default function LoginView({ show, onLoginSuccess }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +24,8 @@ export default function LoginView({ show, onLoginSuccess }) {
     setMessage("Signing in...");
 
     try {
-      const response = await fetch("/api/login", {
+      // Use API_URL prefix for deployed environment
+      const response = await fetch(`${API_URL}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
