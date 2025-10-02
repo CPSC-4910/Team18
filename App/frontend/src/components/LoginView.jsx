@@ -1,6 +1,9 @@
 // App/frontend/src/components/LoginView.jsx
 import React, { useState } from "react";
 
+
+console.log("VITE_API_URL:", import.meta.env.VITE_API_URL);
+
 // Use environment variable for API URL, fallback to proxy for local dev
 const API_URL = import.meta.env.VITE_API_URL || "";
 
