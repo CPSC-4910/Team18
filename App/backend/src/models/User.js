@@ -25,6 +25,19 @@ const User = sequelize.define("User", {
     defaultValue: DataTypes.NOW,
     field: 'created_at',
   },
+
+  // User.js
+  last_login: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  
+  role: {
+    type: DataTypes.ENUM('driver', 'sponsor', 'admin'),
+    allowNull: false,
+    defaultValue: 'driver',
+  },
+
 }, {
   tableName: "users",
   timestamps: false, // We're manually handling created_at

@@ -2,7 +2,7 @@
 import express from "express";
 import sequelize from "./config/database.js";
 import authRouter from "./routes/auth.js";
-
+import User from "./models/User.js";
 const app = express();
 
 // Middleware
@@ -49,6 +49,30 @@ app.get("/api/test-db", async (req, res) => {
     res.status(500).json({ error: "Database connection failed", details: err.message });
   }
 });
+
+// GET /api/drivers — returns drivers with last_login info
+app.get("/api/drivers", async (req, res) => {
+  try {
+    const drivers = await User.findAll({
+      // If you didn't add a 'role' column, remove this where-clause
+      where: { role: "driver" },
+      attributes: [
+        "username",
+        "email",
+        "last_login",
+        // Use the correct created timestamp per your model naming:
+        // If you use underscored: 'created_at'; if default Sequelize: 'createdAt'
+        "created_at"
+      ],
+    });
+
+    res.json({ drivers });
+  } catch (err) {
+    console.error("Error fetching drivers:", err);
+    res.status(500).json({ error: "Failed to fetch drivers" });
+  }
+});
+
 
 // Mount auth routes (handles /api/signup and /api/login)
 app.use(authRouter);
