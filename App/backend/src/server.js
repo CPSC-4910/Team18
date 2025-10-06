@@ -1,6 +1,6 @@
 // App/backend/src/server.js
 import express from "express";
-import sequelize from "./config/database.js";
+import { initializeDatabase } from "./config/database.js";
 import authRouter from "./routes/auth.js";
 
 const app = express();
@@ -8,9 +8,18 @@ const app = express();
 // Middleware
 app.use(express.json());
 
-// CORS middleware - allows requests from frontend
+// CORS middleware
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+  const allowedOrigins = [
+    'http://localhost:3000',
+    process.env.FRONTEND_URL // Will be set in App Runner
+  ].filter(Boolean);
+
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
@@ -21,38 +30,29 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoints
-app.get("/api", (req, res) => {
-  res.json({ message: "Backend server is running" });
-});
-
+// Health check (doesn't require DB)
 app.get("/api/health", (req, res) => {
   res.json({ status: "OK", message: "Server is running" });
 });
 
-app.get("/api/test-db", async (req, res) => {
+// Initialize database and start server
+async function startServer() {
   try {
-    await sequelize.authenticate();
-    res.json({ message: "Database connection successful" });
-  } catch (err) {
-    console.error("Database connection error:", err);
-    res.status(500).json({ error: "Database connection failed", details: err.message });
+    // Initialize database connection with secrets
+    await initializeDatabase();
+    
+    // Mount routes after DB is ready
+    app.use(authRouter);
+    
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => {
+      console.log(`🚀 Backend server running on port ${PORT}`);
+      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
   }
-});
+}
 
-// Mount auth routes (handles /api/signup and /api/login)
-app.use(authRouter);
-
-// Test database connection on startup
-sequelize.authenticate()
-  .then(() => {
-    console.log('✅ Database connection established successfully');
-  })
-  .catch(err => {
-    console.error('❌ Unable to connect to database:', err);
-  });
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-});
+startServer();

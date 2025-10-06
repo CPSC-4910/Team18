@@ -1,16 +1,31 @@
 // App/backend/src/routes/auth.js
 import express from "express";
 import bcrypt from "bcrypt";
-import User from "../models/User.js";
 import { Op } from "sequelize";
 
 const router = express.Router();
 
+// Import User model dynamically to ensure DB is initialized
+let User;
+import("../models/User.js").then(module => {
+  User = module.default;
+});
+
+// Health check endpoint
+app.get("/api", (req, res) => {
+  res.json({ message: "Backend server is running" });
+});
+
 // POST /api/signup
 router.post("/api/signup", async (req, res) => {
+  // Wait for User model if not loaded yet
+  if (!User) {
+    const module = await import("../models/User.js");
+    User = module.default;
+  }
+
   const { username, email, password } = req.body;
 
-  // Validation
   if (!username || !email || !password) {
     return res.status(400).json({ error: "All fields are required" });
   }
@@ -20,7 +35,6 @@ router.post("/api/signup", async (req, res) => {
   }
 
   try {
-    // Check if username or email already exists
     const existingUser = await User.findOne({
       where: {
         [Op.or]: [
@@ -34,11 +48,9 @@ router.post("/api/signup", async (req, res) => {
       return res.status(409).json({ error: "Username or email already exists" });
     }
 
-    // Hash password
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Create new user
     const newUser = await User.create({
       username: username,
       email: email,
@@ -62,6 +74,12 @@ router.post("/api/signup", async (req, res) => {
 
 // POST /api/login
 router.post("/api/login", async (req, res) => {
+  // Wait for User model if not loaded yet
+  if (!User) {
+    const module = await import("../models/User.js");
+    User = module.default;
+  }
+
   const { username, password } = req.body;
 
   if (!username || !password) {
@@ -69,21 +87,18 @@ router.post("/api/login", async (req, res) => {
   }
 
   try {
-    // Find user by username
     const user = await User.findByPk(username);
     
     if (!user) {
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
-    // Compare password
     const match = await bcrypt.compare(password, user.password);
     
     if (!match) {
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
-    // Login success
     res.status(200).json({
       message: "Login successful",
       user: {
