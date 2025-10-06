@@ -3,21 +3,35 @@ import express from "express";
 import sequelize from "./config/database.js";
 import authRouter from "./routes/auth.js";
 
-const app = express();
+//auto create tables if they don't exist (dev-only)
+(async () => {
+  try {
+    await sequelize.sync(); // dev-only: creates tables if missing
+    console.log("✅ Sequelize synced");
+  } catch (e) {
+    console.error("❌ Sequelize sync failed:", e);
+  }
+})();
 
-// Middleware
-app.use(express.json());
 
 // CORS middleware - allows requests from frontend
+const ALLOWED_ORIGINS = new Set([
+  "http://localhost:5173",   // Vite dev
+  "http://localhost:3000",   // keep if you sometimes run on 3000
+  process.env.FRONTEND_ORIGIN,   // e.g. https://your-amplify-id.amplifyapp.com
+  process.env.FRONTEND_ORIGIN_2, // e.g. https://www.yourdomain.com
+].filter(Boolean));
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
   }
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Credentials", "true");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
 
