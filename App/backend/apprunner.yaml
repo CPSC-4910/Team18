@@ -1,0 +1,38 @@
+version: 1.0
+runtime: nodejs18
+
+build:
+  commands:
+    pre-build:
+      - echo "Installing dependencies..."
+      - npm install
+    build:
+      - echo "Build completed successfully"
+    post-build:
+      - echo "Preparing for deployment..."
+
+run:
+  # The command to start your server
+  command: node src/server.js
+  
+  # Network configuration
+  network:
+    port: 5000
+    env: PORT
+  
+  # Environment variables
+  # These are NOT sensitive - they're just configuration
+  env:
+    - name: NODE_ENV
+      value: "production"
+    - name: AWS_REGION
+      value: "us-east-1"
+    
+    # Reference to Secrets Manager (secret ARN will be set in console)
+    # This tells App Runner which secret contains your DB credentials
+    - name: DB_SECRET_ARN
+      value: "arn:aws:secretsmanager:us-east-1:YOUR_ACCOUNT_ID:secret:truckpoints/database-XXXXXX"
+    
+    # Frontend URL for CORS (will be your Amplify URL)
+    - name: FRONTEND_URL
+      value: "https://your-amplify-app.amplifyapp.com"
