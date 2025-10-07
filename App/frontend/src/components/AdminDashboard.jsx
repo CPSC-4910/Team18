@@ -193,16 +193,14 @@ export default function AdminDashboard({ user, onLogout }) {
   };
 
   const stats = [
-    { label: "Total Drivers", value: "1,234", change: "+12%", color: "bg-blue-500", icon: Users },
-    { label: "Active Sponsors", value: "45", change: "+8%", color: "bg-green-500", icon: Package },
-    { label: "Points Awarded", value: "892K", change: "+23%", color: "bg-purple-500", icon: Award },
-    { label: "Redemptions", value: "3,421", change: "+15%", color: "bg-orange-500", icon: ShoppingCart }
+    { label: "Total Drivers", value: "", change: "", color: "bg-blue-500", icon: Users },
+    { label: "Active Sponsors", value: "", change: "", color: "bg-green-500", icon: Package },
+    { label: "Points Awarded", value: "", change: "", color: "bg-purple-500", icon: Award },
+    { label: "Redemptions", value: "", change: "", color: "bg-orange-500", icon: ShoppingCart }
   ];
 
   const recentActivity = [
-    { id: 1, user: "John Doe", action: "Redeemed 5,000 points for Amazon Gift Card", time: "2 minutes ago", type: "redemption" },
-    { id: 2, user: "Jane Smith", action: "Earned 1,200 points for safe driving", time: "15 minutes ago", type: "points" },
-    { id: 3, user: "Mike Johnson", action: "New driver registration", time: "1 hour ago", type: "signup" }
+
   ];
 
   // The AddUserModal definition has been removed from here.
