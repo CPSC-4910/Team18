@@ -1,27 +1,202 @@
-// App/frontend/src/components/AdminDashboard.jsx
-import React, { useState } from "react";
-import { Users, Package, Award, Activity, Settings, LogOut, Menu, X, TrendingUp, AlertCircle, ShoppingCart } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Users, Package, Award, Activity, Settings, LogOut, Menu, X, TrendingUp, AlertCircle, ShoppingCart, UserPlus, CheckCircle, XCircle } from "lucide-react";
 
 export default function AdminDashboard({ user, onLogout }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // Sample data - replace with API calls later
+  const [newUser, setNewUser] = useState({
+    username: "",
+    email: "",
+    password: ""
+  });
+  const [formError, setFormError] = useState("");
+  const [formSuccess, setFormSuccess] = useState("");
+
+  useEffect(() => {
+    if (activeTab === "drivers") {
+      fetchDrivers();
+    }
+  }, [activeTab]);
+
+  const fetchDrivers = async () => {
+    try {
+      const response = await fetch("/api/users");
+      if (response.ok) {
+        const data = await response.json();
+        setDrivers(data);
+      }
+    } catch (error) {
+      console.error("Error fetching drivers:", error);
+    }
+  };
+
+  const handleAddUser = async () => {
+    setFormError("");
+    setFormSuccess("");
+
+    if (!newUser.username.trim() || !newUser.email.trim() || !newUser.password.trim()) {
+      setFormError("All fields are required");
+      return;
+    }
+
+    if (newUser.password.length < 8) {
+      setFormError("Password must be at least 8 characters");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
+      setFormError("Please enter a valid email address");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newUser),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setFormSuccess(`User ${data.user.username} created successfully!`);
+        setNewUser({ username: "", email: "", password: "" });
+        
+        setTimeout(() => {
+          fetchDrivers();
+          setShowAddUserModal(false);
+          setFormSuccess("");
+        }, 1500);
+      } else {
+        setFormError(data.error || "Failed to create user");
+      }
+    } catch (error) {
+      console.error("Error creating user:", error);
+      setFormError("Unable to connect to server. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const stats = [
-
-  ];
-
-  const recentDrivers = [
-
+    { label: "Total Drivers", value: "1,234", change: "+12%", color: "bg-blue-500", icon: Users },
+    { label: "Active Sponsors", value: "45", change: "+8%", color: "bg-green-500", icon: Package },
+    { label: "Points Awarded", value: "892K", change: "+23%", color: "bg-purple-500", icon: Award },
+    { label: "Redemptions", value: "3,421", change: "+15%", color: "bg-orange-500", icon: ShoppingCart }
   ];
 
   const recentActivity = [
-
+    { id: 1, user: "John Doe", action: "Redeemed 5,000 points for Amazon Gift Card", time: "2 minutes ago", type: "redemption" },
+    { id: 2, user: "Jane Smith", action: "Earned 1,200 points for safe driving", time: "15 minutes ago", type: "points" },
+    { id: 3, user: "Mike Johnson", action: "New driver registration", time: "1 hour ago", type: "signup" }
   ];
+
+  const AddUserModal = () => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-gray-900">Add New Driver</h3>
+          <button
+            onClick={() => {
+              setShowAddUserModal(false);
+              setFormError("");
+              setFormSuccess("");
+              setNewUser({ username: "", email: "", password: "" });
+            }}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input
+              type="text"
+              value={newUser.username}
+              onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="e.g. jdoe"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              value={newUser.email}
+              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="driver@example.com"
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              type="password"
+              value={newUser.password}
+              onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Min. 8 characters"
+              disabled={loading}
+            />
+            <p className="text-xs text-gray-500 mt-1">Must be at least 8 characters long</p>
+          </div>
+
+          {formError && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+              <p className="text-sm text-red-600">{formError}</p>
+            </div>
+          )}
+
+          {formSuccess && (
+            <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+              <p className="text-sm text-green-600">{formSuccess}</p>
+            </div>
+          )}
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={() => {
+                setShowAddUserModal(false);
+                setFormError("");
+                setFormSuccess("");
+                setNewUser({ username: "", email: "", password: "" });
+              }}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddUser}
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading}
+            >
+              {loading ? "Creating..." : "Create Driver"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   const renderOverview = () => (
     <div className="space-y-6">
-      {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, idx) => (
           <div key={idx} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
@@ -39,7 +214,6 @@ export default function AdminDashboard({ user, onLogout }) {
         ))}
       </div>
 
-      {/* Recent Activity */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold text-gray-900">Recent Activity</h2>
@@ -50,13 +224,11 @@ export default function AdminDashboard({ user, onLogout }) {
             <div key={activity.id} className="flex items-start gap-4 pb-4 border-b border-gray-100 last:border-0">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                 activity.type === 'redemption' ? 'bg-orange-100' :
-                activity.type === 'points' ? 'bg-purple-100' :
-                activity.type === 'signup' ? 'bg-green-100' : 'bg-blue-100'
+                activity.type === 'points' ? 'bg-purple-100' : 'bg-green-100'
               }`}>
                 <Activity className={`w-5 h-5 ${
                   activity.type === 'redemption' ? 'text-orange-600' :
-                  activity.type === 'points' ? 'text-purple-600' :
-                  activity.type === 'signup' ? 'text-green-600' : 'text-blue-600'
+                  activity.type === 'points' ? 'text-purple-600' : 'text-green-600'
                 }`} />
               </div>
               <div className="flex-1">
@@ -72,173 +244,103 @@ export default function AdminDashboard({ user, onLogout }) {
   );
 
   const renderDrivers = () => (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">Driver Management</h2>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-            Add Driver
-          </button>
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">Driver Management</h2>
+            <button 
+              onClick={() => setShowAddUserModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" />
+              Add Driver
+            </button>
+          </div>
+          <div className="mt-4">
+            <input
+              type="text"
+              placeholder="Search drivers by name or email..."
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
         </div>
-        <div className="mt-4">
-          <input
-            type="text"
-            placeholder="Search drivers by name or email..."
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Driver</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Points</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Joined</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {recentDrivers.map((driver) => (
-              <tr key={driver.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <span className="text-blue-600 font-semibold">{driver.name.charAt(0)}</span>
-                    </div>
-                    <div className="ml-4">
-                      <div className="text-sm font-medium text-gray-900">{driver.name}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{driver.email}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="text-sm font-semibold text-purple-600">{driver.points.toLocaleString()}</span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    driver.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {driver.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{driver.joined}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <button className="text-blue-600 hover:text-blue-900 mr-4">Edit</button>
-                  <button className="text-red-600 hover:text-red-900">Delete</button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Driver</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {drivers.length > 0 ? (
+                drivers.map((driver, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                          <span className="text-blue-600 font-semibold">
+                            {(driver.name?.charAt(0) || driver.username?.charAt(0) || 'U').toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">{driver.name || driver.username}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{driver.email}</td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                        Active
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <button className="text-blue-600 hover:text-blue-900 mr-4">Edit</button>
+                      <button className="text-red-600 hover:text-red-900">Delete</button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                    No drivers found. Add your first driver to get started!
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+      {showAddUserModal && <AddUserModal />}
     </div>
   );
 
   const renderSponsors = () => (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Sponsor Management</h2>
-          <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
-            Add Sponsor
-          </button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[
-
-          ].map((sponsor, idx) => (
-            <div key={idx} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-gray-900">{sponsor.name}</h3>
-                  <p className="text-sm text-gray-600 mt-1">{sponsor.products} products in catalog</p>
-                </div>
-                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                  sponsor.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {sponsor.active ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded hover:bg-blue-100">
-                  View Details
-                </button>
-                <button className="flex-1 px-3 py-2 text-sm bg-gray-50 text-gray-600 rounded hover:bg-gray-100">
-                  Edit
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 className="text-xl font-bold text-gray-900 mb-4">Sponsor Management</h2>
+      <p className="text-gray-600">Sponsor management coming soon...</p>
     </div>
   );
 
   const renderReports = () => (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-6">Reports & Analytics</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-
-          ].map((report, idx) => (
-            <div key={idx} className="border border-gray-200 rounded-lg p-5 hover:border-blue-300 transition-colors cursor-pointer">
-              <h3 className="font-semibold text-gray-900 mb-2">{report.title}</h3>
-              <p className="text-sm text-gray-600 mb-4">{report.desc}</p>
-              <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
-                Generate Report →
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 className="text-xl font-bold text-gray-900 mb-4">Reports & Analytics</h2>
+      <p className="text-gray-600">Reports coming soon...</p>
     </div>
   );
 
   const renderSettings = () => (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-6">System Settings</h2>
-        <div className="space-y-4">
-          <div className="pb-4 border-b border-gray-200">
-            <h3 className="font-semibold text-gray-900 mb-2">Points Configuration</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-
-            </div>
-          </div>
-          <div className="pb-4 border-b border-gray-200">
-            <h3 className="font-semibold text-gray-900 mb-2">Email Notifications</h3>
-            <div className="space-y-2 mt-3">
-              <label className="flex items-center gap-3">
-                <input type="checkbox" defaultChecked className="w-4 h-4 text-blue-600" />
-                <span className="text-sm text-gray-700">Send welcome email to new drivers</span>
-              </label>
-              <label className="flex items-center gap-3">
-                <input type="checkbox" defaultChecked className="w-4 h-4 text-blue-600" />
-                <span className="text-sm text-gray-700">Notify drivers of points earned</span>
-              </label>
-              <label className="flex items-center gap-3">
-                <input type="checkbox" className="w-4 h-4 text-blue-600" />
-                <span className="text-sm text-gray-700">Send monthly summary reports</span>
-              </label>
-            </div>
-          </div>
-          <div>
-            <button className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-              Save Settings
-            </button>
-          </div>
-        </div>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 className="text-xl font-bold text-gray-900 mb-4">System Settings</h2>
+      <p className="text-gray-600">Settings coming soon...</p>
     </div>
   );
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-gray-200 transition-all duration-300 flex flex-col`}>
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           {sidebarOpen && <h1 className="font-bold text-xl text-gray-900">Admin Panel</h1>}
@@ -281,7 +383,6 @@ export default function AdminDashboard({ user, onLogout }) {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 overflow-auto">
         <header className="bg-white border-b border-gray-200 px-8 py-6">
           <div className="flex items-center justify-between">

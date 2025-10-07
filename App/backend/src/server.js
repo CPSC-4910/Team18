@@ -89,6 +89,6 @@ sequelize.authenticate()
 // Start server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Backend server running on http://0.0.0.0:${PORT}`);
-  console.log(`📡 Accessible at http://<your-ec2-public-ip>:${PORT}`);
+  console.log(`Backend server running on http://0.0.0.0:${PORT}`);
+  console.log(`Accessible at http://3.229.166.87:${PORT}`);
 });
