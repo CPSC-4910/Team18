@@ -5,6 +5,8 @@ import Header from "./components/Header.jsx";
 import AboutView from "./components/AboutView.jsx";
 import LoginView from "./components/LoginView.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
+import DriverView from "./components/DriverView.jsx";
+import SponsorView from "./components/SponsorView.jsx";
 
 export default function App() {
   const [view, setView] = useState("about");
@@ -87,6 +89,9 @@ export default function App() {
       <div className={view === "login" ? "view active" : "view"}>
         <LoginView show={show} onLoginSuccess={handleLoginSuccess} />
       </div>
+
+      <button className="btn" onClick={() => show("sponsor")}>Sponsor</button>
+      <button className="btn" onClick={() => show("driver")}></button>
       
       <footer>
         © 2025 Team 18 • Built with ❤️ for safer roads and happier drivers.
