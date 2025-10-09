@@ -1,30 +1,32 @@
 // App/backend/src/server.js
 import express from "express";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import sequelize from "./config/database.js";
 import authRouter from "./routes/auth.js";
+import User from "./models/User.js";
 
-//auto create tables if they don't exist (dev-only)
-(async () => {
-  try {
-    await sequelize.sync(); // dev-only: creates tables if missing
-    console.log("✅ Sequelize synced");
-  } catch (e) {
-    console.error("❌ Sequelize sync failed:", e);
-  }
-})();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
+// Load environment variables
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
-// CORS middleware - allows requests from frontend
-const ALLOWED_ORIGINS = new Set([
-  "http://localhost:5173",   // Vite dev
-  "http://localhost:3000",   // keep if you sometimes run on 3000
-  process.env.FRONTEND_ORIGIN,   // e.g. https://your-amplify-id.amplifyapp.com
-  process.env.FRONTEND_ORIGIN_2, // e.g. https://www.yourdomain.com
-].filter(Boolean));
+// Create express app
+const app = express();
+app.use(express.json());
+
+// CORS middleware
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",       // include vite dev if needed
+  "https://cpsc4911.com"
+];
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  if (allowedOrigins.includes(origin) || origin?.includes("amplifyapp.com")) {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Vary", "Origin");
   }
@@ -54,19 +56,35 @@ app.get("/api/test-db", async (req, res) => {
   }
 });
 
-// Mount auth routes (handles /api/signup and /api/login)
+// GET /api/drivers — example driver listing
+app.get("/api/drivers", async (req, res) => {
+  try {
+    const drivers = await User.findAll({
+      // If you haven’t added a `role` column, remove this `where`
+      // where: { role: "driver" },
+      attributes: ["username", "email", "created_at", "last_login"]
+    });
+    res.json({ drivers });
+  } catch (err) {
+    console.error("Error fetching drivers:", err);
+    res.status(500).json({ error: "Failed to fetch drivers" });
+  }
+});
+
+// Mount auth routes (signup & login)
 app.use(authRouter);
 
-// Test database connection on startup
-sequelize.authenticate()
-  .then(() => {
-    console.log('✅ Database connection established successfully');
-  })
-  .catch(err => {
-    console.error('❌ Unable to connect to database:', err);
-  });
+// Initialize DB and start server
+(async () => {
+  try {
+    await sequelize.authenticate();
+    console.log("✅ Database connection established successfully");
+  } catch (err) {
+    console.error("❌ Unable to connect to database:", err);
+  }
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Backend server running on http://localhost:${PORT}`);
-});
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Backend server running on http://0.0.0.0:${PORT}`);
+  });
+})();
