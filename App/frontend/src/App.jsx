@@ -73,6 +73,8 @@ export default function App() {
     return <AdminDashboard user={user} onLogout={handleLogout} />;
   }
 
+  
+
   // Otherwise show the normal app with header/footer
   return (
     <>
@@ -91,7 +93,15 @@ export default function App() {
       </div>
 
       <button className="btn" onClick={() => show("sponsor")}>Sponsor</button>
-      <button className="btn" onClick={() => show("driver")}></button>
+      <button className="btn" onClick={() => show("driver")}>Driver</button>
+
+      <div className={view === "driver" ? "view active" : "view"}>
+        <DriverView user={user} show={show} />
+      </div>
+
+      <div className={view === "sponsor" ? "view active" : "view"}>
+        <SponsorView user={user} show={show} />
+      </div>
       
       <footer>
         © 2025 Team 18 • Built with ❤️ for safer roads and happier drivers.

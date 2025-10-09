@@ -18,6 +18,10 @@ export default function Header({ show, user, onLogout }) {
         >
           About
         </button>
+
+        <button className="btn" onClick={() => show("driver")}>Driver</button>
+        <button className="btn" onClick={() => show("sponsor")}>Sponsor</button>
+
         
         {user ? (
           <>
