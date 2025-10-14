@@ -8,6 +8,7 @@ export default function Header({ show, user, onLogout }) {
         <div className="logo" aria-hidden="true"></div>
         <div className="title">Team 18 • Good Driver Incentive Program</div>
       </div>
+
       <div className="nav-actions">
         <button
           className="btn btn-ghost"
@@ -18,7 +19,7 @@ export default function Header({ show, user, onLogout }) {
         >
           About
         </button>
-        
+
         {user ? (
           <>
             <button
@@ -30,6 +31,33 @@ export default function Header({ show, user, onLogout }) {
             >
               Dashboard
             </button>
+
+            {/* 🕒 Display login and account info when logged in */}
+            <div
+              className="user-info"
+              style={{
+                display: "inline-block",
+                textAlign: "left",
+                marginRight: "16px",
+                fontSize: "0.85rem",
+                color: "#f0f0f0",
+              }}
+            >
+              <div><strong>{user.username}</strong></div>
+              <div style={{ opacity: 0.9 }}>
+                <span>Last login:{" "}</span>
+                {user.last_login
+                  ? new Date(user.last_login).toLocaleString()
+                  : "—"}
+              </div>
+              <div style={{ opacity: 0.9 }}>
+                <span>Created:{" "}</span>
+                {user.account_created_at
+                  ? new Date(user.account_created_at).toLocaleDateString()
+                  : "—"}
+              </div>
+            </div>
+
             <button
               className="btn btn-primary"
               type="button"

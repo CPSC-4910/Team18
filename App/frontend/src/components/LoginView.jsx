@@ -6,10 +6,12 @@ export default function LoginView({ show, onLoginSuccess }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [userData, setUserData] = React.useState(null); // already present
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMessage("");
+    setUserData(null); // 🆕 clear old user data if retrying login
 
     // Validation
     if (!username.trim() || !password.trim()) {
@@ -37,7 +39,10 @@ export default function LoginView({ show, onLoginSuccess }) {
       if (response.ok) {
         // Login successful!
         setMessage(`✓ Success! Welcome back, ${data.user.username}!`);
-        
+
+        // 🕒 Save user info (includes timestamps)
+        setUserData(data.user);
+
         // Call the success callback to switch to dashboard
         setTimeout(() => {
           onLoginSuccess(data.user);
@@ -137,6 +142,32 @@ export default function LoginView({ show, onLoginSuccess }) {
             >
               {message}
             </p>
+          )}
+
+          {/* 🕒 Timestamp Info Panel */}
+          {userData && (
+            <div
+              className="panel"
+              style={{
+                marginTop: "16px",
+                background: "#f9fafb",
+                padding: "12px 16px",
+                borderRadius: "12px",
+                border: "1px solid #e5e7eb",
+                textAlign: "left",
+              }}
+            >
+              <p style={{ margin: "4px 0" }}>
+                <strong>Account Created:</strong>{" "}
+                {new Date(userData.account_created_at).toLocaleString()}
+              </p>
+              <p style={{ margin: "4px 0" }}>
+                <strong>Last Login:</strong>{" "}
+                {userData.last_login
+                  ? new Date(userData.last_login).toLocaleString()
+                  : "First login!"}
+              </p>
+            </div>
           )}
         </form>
       </div>

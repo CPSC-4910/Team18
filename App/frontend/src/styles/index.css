@@ -67,6 +67,16 @@ header {
   .grid { grid-template-columns: 1fr 1fr; }
 }
 
+.account-info {
+  margin-top: 8px;
+  color: #555;
+  font-size: 0.95rem;
+}
+.account-info strong {
+  color: #0b65d8;
+}
+
+
 .card {
   background: #fff;
   border-radius: 14px;

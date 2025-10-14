@@ -46,6 +46,14 @@ router.post("/api/signup", async (req, res) => {
       created_at: new Date(),
     });
 
+    const user = await User.create({
+      username,
+      email,
+      password: hashedPassword,
+      account_created_at: new Date(), // <--- tracks signup time
+      last_login: null,               // initialize as null
+    });
+
     res.status(201).json({
       message: "User created successfully",
       user: {
@@ -70,7 +78,7 @@ router.post("/login", async (req, res) => {
 
   try {
     // Find user by username
-    const user = await User.findByPk(username);
+     const user = await User.findOne({ where: { username } });
     
     if (!user) {
       return res.status(401).json({ error: "Invalid username or password" });
@@ -83,12 +91,18 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
+    // 🆕 Update last_login timestamp
+    user.last_login = new Date();
+    await user.save();
+
     // Login success
     res.status(200).json({
       message: "Login successful",
       user: {
         username: user.username,
         email: user.email,
+        account_created_at: user.account_created_at,
+        last_login: user.last_login,
       }
     });
 
