@@ -1,7 +1,17 @@
 // App/backend/src/server.js
 import express from "express";
+import cors from "cors";
 import sequelize from "./config/database.js";
 import authRouter from "./routes/auth.js";
+import userRouter from "./routes/userRoute.js";
+
+const app = express();
+app.use(express.json());
+app.use(cors());
+
+app.use("/api", authRouter);
+app.use("/api/users", userRouter);
+
 
 //auto create tables if they don't exist (dev-only)
 (async () => {
@@ -35,6 +45,7 @@ app.use((req, res, next) => {
   next();
 });
 
+
 // Health check endpoints
 app.get("/api", (req, res) => {
   res.json({ message: "Backend server is running" });
@@ -53,6 +64,7 @@ app.get("/api/test-db", async (req, res) => {
     res.status(500).json({ error: "Database connection failed", details: err.message });
   }
 });
+
 
 // Mount auth routes (handles /api/signup and /api/login)
 app.use(authRouter);
