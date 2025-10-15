@@ -8,7 +8,7 @@ const router = express.Router();
 
 // POST /api/signup
 router.post("/api/signup", async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password, role } = req.body;
 
   // Validation
   if (!username || !email || !password) {
@@ -18,6 +18,10 @@ router.post("/api/signup", async (req, res) => {
   if (password.length < 8) {
     return res.status(400).json({ error: "Password must be at least 8 characters" });
   }
+
+  // Determine role
+  const allowedRoles = ["driver", "sponsor", "admin"];
+  const userRole = allowedRoles.includes(role) ? role : "driver";
 
   try {
     // Check if username or email already exists
@@ -43,6 +47,7 @@ router.post("/api/signup", async (req, res) => {
       username: username,
       email: email,
       password: hashedPassword,
+      role: userRole,
       created_at: new Date(),
     });
 
@@ -51,6 +56,7 @@ router.post("/api/signup", async (req, res) => {
       user: {
         username: newUser.username,
         email: newUser.email,
+        role: newUser.role,
       }
     });
 

@@ -6,6 +6,10 @@ import AboutView from "./components/AboutView.jsx";
 import LoginView from "./components/LoginView.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
 
+//change testing
+import DriverView from "./components/DriverView.jsx";
+import SponsorView from "./components/SponsorView.jsx";
+
 export default function App() {
   const [view, setView] = useState("about");
   const [user, setUser] = useState(null);
@@ -51,13 +55,26 @@ export default function App() {
     }
   };
 
-  const handleLoginSuccess = (userData) => {
-    setUser(userData);
-    // Save user to localStorage for session persistence
-    localStorage.setItem("user", JSON.stringify(userData));
-    setView("dashboard");
-    history.pushState({ v: "dashboard" }, "", "#/dashboard");
-  };
+const handleLoginSuccess = (userData) => {
+  setUser(userData);
+  localStorage.setItem("user", JSON.stringify(userData));
+
+  // ✅ Redirect based on user role
+  if (userData.role === "admin") {
+    setView("admin");
+    history.pushState({ v: "admin" }, "", "#/admin");
+  } else if (userData.role === "sponsor") {
+    setView("sponsor");
+    history.pushState({ v: "sponsor" }, "", "#/sponsor");
+  } else if (userData.role === "driver") {
+    setView("driver");
+    history.pushState({ v: "driver" }, "", "#/driver");
+  } else {
+    // fallback
+    setView("about");
+    history.pushState({ v: "about" }, "", "#/about");
+  }
+};
 
   const handleLogout = () => {
     setUser(null);
@@ -67,9 +84,15 @@ export default function App() {
   };
 
   // If user is logged in and viewing dashboard, show only dashboard
-  if (user && view === "dashboard") {
+if (user) {
+  if (view === "admin") {
     return <AdminDashboard user={user} onLogout={handleLogout} />;
+  } else if (view === "sponsor") {
+    return <SponsorView user={user} onLogout={handleLogout} />;
+  } else if (view === "driver") {
+    return <DriverView user={user} onLogout={handleLogout} />;
   }
+}
 
   // Otherwise show the normal app with header/footer
   return (

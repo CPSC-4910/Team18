@@ -73,6 +73,19 @@ app.get("/api/drivers", async (req, res) => {
   }
 });
 
+// GET /api/sponsors — returns all sponsors
+app.get("/api/sponsors", async (req, res) => {
+  try {
+    const sponsors = await User.findAll({
+      where: { role: "sponsor" },
+      attributes: ["username", "email", "last_login", "created_at"]
+    });
+    res.json({ sponsors });
+  } catch (err) {
+    console.error("Error fetching sponsors:", err);
+    res.status(500).json({ error: "Failed to fetch sponsors" });
+  }
+});
 
 // Mount auth routes (handles /api/signup and /api/login)
 app.use(authRouter);

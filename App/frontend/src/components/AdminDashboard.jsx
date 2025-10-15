@@ -15,7 +15,7 @@ const AddUserModal = ({
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-bold text-gray-900">Add New Driver</h3>
+        <h3 className="text-xl font-bold text-gray-900">Add New User</h3>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
           <X className="w-6 h-6" />
         </button>
@@ -89,7 +89,7 @@ const AddUserModal = ({
             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={loading}
           >
-            {loading ? "Creating..." : "Create Driver"}
+            {loading ? "Creating..." : "Create User"}
           </button>
         </div>
       </div>
@@ -102,6 +102,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [showAddSponsorModal, setShowAddSponsorModal] = useState(false);
   const [drivers, setDrivers] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -112,11 +113,18 @@ export default function AdminDashboard({ user, onLogout }) {
   });
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
+  const [sponsors, setSponsors] = useState([]);
+  const [newSponsor, setNewSponsor] = useState({ username: "", email: "", password: "" });
+  const [sponsorFormError, setSponsorFormError] = useState("");
+  const [sponsorFormSuccess, setSponsorFormSuccess] = useState("");
+
 
   useEffect(() => {
     if (activeTab === "drivers") {
       fetchDrivers();
-    }
+  } else if (activeTab === "sponsors") {
+      fetchSponsors();
+  }
   }, [activeTab]);
 
   const fetchDrivers = async () => {
@@ -133,6 +141,18 @@ export default function AdminDashboard({ user, onLogout }) {
       console.error("Error fetching drivers:", error);
     }
   };
+
+const fetchSponsors = async () => {
+  try {
+    const response = await fetch("/api/sponsors");
+    if (response.ok) {
+      const data = await response.json();
+      setSponsors(data.sponsors);
+    }
+  } catch (error) {
+    console.error("Error fetching sponsors:", error);
+  }
+};
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -191,6 +211,52 @@ export default function AdminDashboard({ user, onLogout }) {
       setLoading(false);
     }
   };
+
+const handleAddSponsor = async () => {
+  setSponsorFormError("");
+  setSponsorFormSuccess("");
+
+  if (!newSponsor.username.trim() || !newSponsor.email.trim() || !newSponsor.password.trim()) {
+    setSponsorFormError("All fields are required");
+    return;
+  }
+  if (newSponsor.password.length < 8) {
+    setSponsorFormError("Password must be at least 8 characters");
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newSponsor.email)) {
+    setSponsorFormError("Please enter a valid email address");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const response = await fetch("/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...newSponsor, role: "sponsor" }),
+    });
+    const data = await response.json();
+
+    if (response.ok) {
+      setSponsorFormSuccess(`Sponsor ${data.user.username} created successfully!`);
+      setSponsors(prev => [...prev, data.user]);
+      setNewSponsor({ username: "", email: "", password: "" });
+      setTimeout(() => {
+        setShowAddUserModal(false);
+        setSponsorFormSuccess("");
+      }, 1500);
+    } else {
+      setSponsorFormError(data.error || "Failed to create sponsor");
+    }
+  } catch (error) {
+    console.error("Error creating sponsor:", error);
+    setSponsorFormError("Unable to connect to server. Please try again.");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const stats = [
     { label: "Total Drivers", value: "", change: "", color: "bg-blue-500", icon: Users },
@@ -339,12 +405,80 @@ export default function AdminDashboard({ user, onLogout }) {
     </div>
   );
 
-  const renderSponsors = () => (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-      <h2 className="text-xl font-bold text-gray-900 mb-4">Sponsor Management</h2>
-      <p className="text-gray-600">Sponsor management coming soon...</p>
+const renderSponsors = () => (
+  <div className="space-y-6">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+      <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="text-xl font-bold text-gray-900">Sponsor Management</h2>
+        <button
+          onClick={() => setShowAddSponsorModal(true)}
+          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
+        >
+          <UserPlus className="w-4 h-4" />
+          Add Sponsor
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sponsor</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {sponsors.length > 0 ? (
+              sponsors.map((sponsor) => (
+                <tr key={sponsor.username} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">{sponsor.username}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{sponsor.email}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                      Active
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button className="text-blue-600 hover:text-blue-900 mr-4">Edit</button>
+                    <button className="text-red-600 hover:text-red-900">Delete</button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                  No sponsors found. Add your first sponsor to get started!
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {showAddSponsorModal && (
+        <AddUserModal
+          onClose={() => {
+            setShowAddSponsorModal(false);
+            setSponsorFormError("");
+            setSponsorFormSuccess("");
+            setNewSponsor({ username: "", email: "", password: "" });
+          }}
+          newUser={newSponsor}
+          handleInputChange={(e) => {
+            const { name, value } = e.target;
+            setNewSponsor(prev => ({ ...prev, [name]: value }));
+          }}
+          handleAddUser={handleAddSponsor}
+          loading={loading}
+          formError={sponsorFormError}
+          formSuccess={sponsorFormSuccess}
+        />
+      )}
     </div>
-  );
+  </div>
+);
+
 
   const renderReports = () => (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
