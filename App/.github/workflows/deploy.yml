@@ -13,14 +13,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
       
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@master
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /path/to/your/app
-            git pull origin main
-            npm install  # or pip install -r requirements.txt
-            pm2 restart app  # or systemctl restart your-service
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      - name: Create deployment package
+        run: |
+          zip -r deployment.zip . -x "*.git*" "node_modules/*" "*/node_modules/*"
+      
+      - name: Upload to S3
+        run: |
+          aws s3 cp deployment.zip s3://${{ secrets.S3_BUCKET }}/deployment-${{ github.sha }}.zip
+      
+      - name: Create CodeDeploy deployment
+        run: |
+          aws deploy create-deployment \
+            --application-name ${{ secrets.CODEDEPLOY_APP_NAME }} \
+            --deployment-group-name ${{ secrets.CODEDEPLOY_GROUP_NAME }} \
+            --s3-location bucket=${{ secrets.S3_BUCKET }},key=deployment-${{ github.sha }}.zip,bundleType=zip \
+            --description "Deployment from GitHub commit ${{ github.sha }}"
