@@ -1,0 +1,13 @@
+name: Simple Test Workflow
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo Message
+        run: echo "Workflow detected"
