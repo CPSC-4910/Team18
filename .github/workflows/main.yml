@@ -6,15 +6,16 @@ on:
       - dashboard-feature-updates
 
 permissions:
-  id-token: write  # Required to fetch the OIDC token
-  contents: read   # Required for actions/checkout
+  id-token: write
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3 # Consider updating to v4 if needed
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -22,4 +23,19 @@ jobs:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # ... rest of your workflow steps ...
+      - name: Create deployment package
+        run: |
+          zip -r deployment.zip . -x "*.git*" "node_modules/*" "*/node_modules/*"
+
+      - name: Upload to S3
+        run: |
+          aws s3 cp deployment.zip s3://${{ secrets.S3_BUCKET }}/deployment-${{ github.sha }}.zip
+
+      - name: Create CodeDeploy deployment
+        run: |
+          aws deploy create-deployment \
+            --application-name ${{ secrets.CODEDEPLOY_APP_NAME }} \
+            --deployment-group-name ${{ secrets.CODEDEPLOY_GROUP_NAME }} \
+            --s3-location bucket=${{ secrets.S3_BUCKET }},key=deployment-${{ github.sha }}.zip,bundleType=zip \
+            --description "Deployment from GitHub commit ${{ github.sha }}"
+      # --- END OF REQUIRED STEPS ---
