@@ -22,7 +22,9 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
-
+      - name: Ensure scripts are executable
+        run: |
+          chmod +x scripts/*.sh
       - name: Create deployment package
         run: |
           ls -R
