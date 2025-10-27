@@ -26,7 +26,6 @@ const User = sequelize.define("User", {
     field: 'created_at',
   },
 
-  // User.js
   last_login: {
     type: DataTypes.DATE,
     allowNull: true,
@@ -37,6 +36,18 @@ const User = sequelize.define("User", {
     allowNull: false,
     defaultValue: 'driver',
   },
+
+  reset_code: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    defaultValue: null,
+  },
+
+  reset_expires: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
+  }
 
 }, {
   tableName: "users",

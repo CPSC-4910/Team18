@@ -3,8 +3,80 @@ import express from "express";
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import { Op } from "sequelize";
-
+import nodemailer from "nodemailer"
 const router = express.Router();
+
+//nodemailer setup, this is what gets gmail to work
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER, // truckpoints.noreply@gmail.com
+    pass: process.env.EMAIL_PASS, // app password
+  },
+});
+
+// Send password reset code user for nodemailer
+const sendResetEmail = async (userEmail, username, resetCode) => {
+  await transporter.sendMail({
+    from: `"TruckPoints" <${process.env.EMAIL_USER}>`,
+    to: userEmail,
+    subject: "Your TruckPoints Password Reset Code",
+    text: `Hello ${username},\n\nYour password reset code is: ${resetCode}\nIt will expire in 15 minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
+  });
+};
+
+//this generates a code for authentication in resetting the users password. Once the user enters their username this function sends
+//the associated email a code needed to confirm the reset
+router.post("/api/request-password-reset", async (req, res) => {
+  const { username } = req.body;
+  if (!username) return res.status(400).json({ error: "Username is required" });
+
+  try {
+    const user = await User.findOne({ where: { username } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiration = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+
+    await user.update({ reset_code: resetCode, reset_expires: expiration });
+    await sendResetEmail(user.email, user.username, resetCode);
+
+    res.json({ message: "Password reset code sent to your email." });
+  } catch (err) {
+    console.error("Password reset request error:", err);
+    res.status(500).json({ error: "Failed to send password reset code." });
+  }
+});
+
+//this function accepts the code sent to the email, and updates the users password
+router.post("/api/reset-password", async (req, res) => {
+  const { username, code, newPassword } = req.body;
+  if (!username || !code || !newPassword) {
+    return res.status(400).json({ error: "Username, code, and new password are required" });
+  }
+
+  try {
+    const user = await User.findOne({ where: { username } });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+  if (user.reset_code !== code || new Date() > user.reset_expires) {
+    return res.status(400).json({ error: "Invalid or expired reset code" });
+  }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await user.update({
+      password: hashedPassword,
+      reset_code: null,
+      reset_expires: null
+    });
+
+    res.json({ message: "Password successfully reset!" });
+  } catch (err) {
+    console.error("Reset password error:", err);
+    res.status(500).json({ error: "Failed to reset password." });
+  }
+});
 
 // POST /api/signup
 router.post("/api/signup", async (req, res) => {

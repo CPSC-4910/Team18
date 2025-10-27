@@ -108,9 +108,16 @@ export default function LoginView({ show, onLoginSuccess }) {
             <label className="checkbox">
               <input type="checkbox" id="remember" /> Remember me
             </label>
-            <a href="#" className="muted">
-              Forgot password?
-            </a>
+              <a
+                href="#"
+                className="muted"
+                onClick={(e) => {
+                  e.preventDefault();
+                  show("forgot"); // navigate to ForgotPasswordView
+                }}
+              >
+                Forgot password?
+              </a>
           </div>
 
           <div className="actions">

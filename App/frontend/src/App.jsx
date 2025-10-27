@@ -5,10 +5,9 @@ import Header from "./components/Header.jsx";
 import AboutView from "./components/AboutView.jsx";
 import LoginView from "./components/LoginView.jsx";
 import AdminDashboard from "./components/AdminDashboard.jsx";
-
-//change testing
 import DriverView from "./components/DriverView.jsx";
 import SponsorView from "./components/SponsorView.jsx";
+import ForgotPasswordView from "./components/ForgotPasswordView.jsx";
 
 export default function App() {
   const [view, setView] = useState("about");
@@ -36,6 +35,8 @@ export default function App() {
         setView("dashboard");
       } else if (location.hash === "#/login") {
         setView("login");
+      } else if(location.hash === "#/forgot") {
+        setView("forgot");
       } else {
         setView("about");
       }
@@ -50,6 +51,8 @@ export default function App() {
       history.pushState({ v: "login" }, "", "#/login");
     } else if (v === "about" && location.hash !== "#/about") {
       history.pushState({ v: "about" }, "", "#/about");
+    } else if (v === "forgot" && location.hash !== "#/forgot") {
+      history.pushState({v: "forgot" }, "", "#/forgot")
     } else if (v === "dashboard" && location.hash !== "#/dashboard") {
       history.pushState({ v: "dashboard" }, "", "#/dashboard");
     }
@@ -109,6 +112,11 @@ if (user) {
       {/* Login view */}
       <div className={view === "login" ? "view active" : "view"}>
         <LoginView show={show} onLoginSuccess={handleLoginSuccess} />
+      </div>
+
+      {/* Forgot Password view */}
+      <div className={view === "forgot" ? "view active" : "view"}>
+        <ForgotPasswordView show={show} onBack={() => show("login")}/>
       </div>
       
       <footer>
