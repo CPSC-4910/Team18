@@ -25,8 +25,11 @@ jobs:
 
       - name: Create deployment package
         run: |
+          ls -R
           zip -r deployment.zip . -x "*.git*" "node_modules/*" "*/node_modules/*"
-
+      - name: Verify archive contents
+        run: |
+          unzip -l deployment.zip | grep scripts/
       - name: Upload to S3
         run: |
           aws s3 cp deployment.zip s3://${{ secrets.S3_BUCKET }}/deployment-${{ github.sha }}.zip
