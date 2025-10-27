@@ -8,13 +8,13 @@ echo "Starting application with PM2..."
 # nvm use 20 # Or the specific version needed
 
 # Start the backend
-cd /var/www/my-app/backend
+cd /home/ec2-user/app/backend
 echo "Starting backend process..."
 # Assumes 'npm start' is defined in backend/package.json
 pm2 start npm --name "backend" -- start
 
 # Start the frontend
-cd /var/www/my-app/frontend
+cd /home/ec2-user/app/frontend
 echo "Starting frontend process..."
 
 # --- IMPORTANT ---
