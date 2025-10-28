@@ -1,34 +1,42 @@
 #!/bin/bash
 echo "Starting application with PM2..."
 
-# Source NVM - Needed if PM2 doesn't pick up the right Node version automatically
-# May need adjustment depending on how NVM is installed for the runas user
-# export NVM_DIR="$HOME/.nvm"
-# [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-# nvm use 20 # Or the specific version needed
-#Define app directories
+# --- NVM SOURCING ---
+# Source NVM for the ec2-user. Adjust path if needed.
+export NVM_DIR="/home/ec2-user/.nvm"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  echo "Sourcing NVM..."
+  . "$NVM_DIR/nvm.sh"
+  # Verify NVM is sourced
+  command -v nvm
+  echo "Using Node version 20..."
+  nvm use 20
+  echo "Current Node version: $(node -v)"
+  echo "Current NPM version: $(npm -v)"
+else
+  echo "NVM directory or nvm.sh not found at $NVM_DIR" >&2
+  # exit 1 # Optional: exit if NVM isn't found
+fi
+# --- END NVM SOURCING ---
+
+
+# Define app directories
 BACKEND_DIR="/home/ec2-user/app/backend"
 FRONTEND_DIR="/home/ec2-user/app/frontend"
 
-# Start the backend
-cd /home/ec2-user/app/backend
+# Start the backend using --cwd
 echo "Starting backend process in $BACKEND_DIR..."
-# Assumes 'npm start' is defined in backend/package.json
+# Tells PM2 to run 'npm start' from the BACKEND_DIR
 pm2 start npm --name "backend" --cwd "$BACKEND_DIR" -- start
 
-# Start the frontend
-cd /home/ec2-user/app/frontend
+# Start the frontend using --cwd
 echo "Starting frontend process in $FRONTEND_DIR..."
-
-# --- IMPORTANT ---
-# Using 'npm run dev' is NOT recommended for production deployments.
-# Ideally, your GitHub Action should build the frontend, and you deploy the build output.
-# Then, you'd either serve the static files via Nginx/Apache or your backend.
-# If you MUST run the dev server (e.g., for testing):
+# Still recommend against 'npm run dev' for production
 pm2 start npm --name "frontend" --cwd "$FRONTEND_DIR" -- run dev -- --host --port 5173
 
-# Make PM2 remember these processes after reboot
-pm2 save
+# --- UNCOMMENT THIS ---
+# Save the PM2 process list so they restart on reboot
+pm2 save --force
 
-echo "Application started successfully via PM2."
+echo "Application start commands issued via PM2."
 echo "Use 'pm2 list' to see status."
