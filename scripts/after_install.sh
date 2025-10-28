@@ -11,7 +11,7 @@ cd /home/ec2-user/app/App/frontend
 echo "Installing frontend dependencies..."
 # If your frontend needs production dependencies, install them.
 # If it's just build output, you might skip this.
-# npm install --production
+npm install #--production
 
 # If your frontend needs a build step *on the server* (less common with CI/CD):
 # npm run build
