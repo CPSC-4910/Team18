@@ -21,8 +21,8 @@ fi
 
 
 # Define app directories
-BACKEND_DIR="/home/ec2-user/app/backend"
-FRONTEND_DIR="/home/ec2-user/app/frontend"
+BACKEND_DIR="/home/ec2-user/app/App/backend"
+FRONTEND_DIR="/home/ec2-user/app/App/frontend"
 
 # Start the backend using --cwd
 echo "Starting backend process in $BACKEND_DIR..."
