@@ -2,12 +2,12 @@
 echo "Installing dependencies..."
 
 # Navigate to the backend directory (CodeDeploy copies files here first)
-cd /home/ec2-user/app/backend
+cd /home/ec2-user/app/App/backend
 echo "Installing backend dependencies..."
 npm install --production # Use --production to skip devDependencies
 
 # Navigate to the frontend directory
-cd /home/ec2-user/app/frontend
+cd /home/ec2-user/app/App/frontend
 echo "Installing frontend dependencies..."
 # If your frontend needs production dependencies, install them.
 # If it's just build output, you might skip this.
