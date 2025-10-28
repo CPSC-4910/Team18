@@ -144,7 +144,6 @@ router.post("/api/signup", async (req, res) => {
 router.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
 
-
   console.log("[LOGIN] hit", { username, hasPassword: !!password });
 
   if (!username || !password) {
@@ -155,33 +154,66 @@ router.post("/api/login", async (req, res) => {
   try {
     // Find user by username
     const user = await User.findByPk(username);
-    
+
     if (!user) {
       console.log("[LOGIN] user not found:", username);
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
-
     console.log("[LOGIN] user found:", user.username);
+
+    const now = new Date();
+
+    // Reset failed attempts if last failed is more than 1 hour ago
+    if (user.last_failed_at && now - user.last_failed_at > 60 * 60 * 1000) {
+      user.failed_attempts = 0;
+      user.last_failed_at = null;
+      await user.save();
+      console.log("[LOGIN] failed_attempts reset due to timeout");
+    }
+
+    // Check if account is currently locked
+    if (user.locked_until && now < user.locked_until) {
+      console.log("[LOGIN] account locked until", user.locked_until);
+      return res.status(403).json({ error: `Account locked until ${user.locked_until.toLocaleString()}` });
+    }
 
     // Compare password
     const match = await bcrypt.compare(password, user.password);
-
     console.log("[LOGIN] password match?", match);
 
-    console.log('[LOGIN OK]', user.username, 'updating last_login at', new Date());
-    //updates on real logins
-    user.last_login = new Date();
-    await user.save();
-
-    
     if (!match) {
+      // Wrong password: increment failed attempts
+      const lastFailed = user.last_failed_at || now;
+      let attempts = user.failed_attempts || 0;
+
+      // Reset counter if last failed attempt was more than 30 minutes ago
+      if (now - lastFailed > 30 * 60 * 1000) {
+        attempts = 1;
+      } else {
+        attempts += 1;
+      }
+
+      user.failed_attempts = attempts;
+      user.last_failed_at = now;
+
+      // Lock account if attempts >= 5
+      if (attempts >= 5) {
+        user.locked_until = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour lock
+        console.log("[LOGIN] account locked due to too many failed attempts");
+      }
+
+      await user.save();
+
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
-    // ✅ Record last login timestamp on successful auth
-    user.last_login = new Date();
-    await user.save(); // persist to DB
+    // Successful login: reset failed attempts and update last login
+    user.failed_attempts = 0;
+    user.last_failed_at = null;
+    user.locked_until = null;
+    user.last_login = now;
+    await user.save();
 
     console.log("[LOGIN OK]", user.username, "updated last_login:", user.last_login);
 
@@ -190,19 +222,10 @@ router.post("/api/login", async (req, res) => {
       user: {
         username: user.username,
         email: user.email,
-        role: user.role, // ← include this only if you added the 'role' column
+        role: user.role,
         last_login: user.last_login,
-        created_at: user.created_at, // handy for the Drivers table
+        created_at: user.created_at,
       },
-    });
-
-    // Login success
-    res.status(200).json({
-      message: "Login successful",
-      user: {
-        username: user.username,
-        email: user.email,
-      }
     });
 
   } catch (err) {
@@ -210,5 +233,6 @@ router.post("/api/login", async (req, res) => {
     res.status(500).json({ error: "Server error during login" });
   }
 });
+
 
 export default router;

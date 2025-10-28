@@ -47,6 +47,24 @@ const User = sequelize.define("User", {
     type: DataTypes.DATE,
     allowNull: true,
     defaultValue: null,
+  },
+
+  failed_attempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: '0',
+  },
+
+  last_failed_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
+  },
+
+  locked_until: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
   }
 
 }, {
