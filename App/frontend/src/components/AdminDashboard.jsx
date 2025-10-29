@@ -119,6 +119,21 @@ export default function AdminDashboard({ user, onLogout }) {
   const [sponsorFormSuccess, setSponsorFormSuccess] = useState("");
 
 
+  const [catalog, setCatalog] = useState([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+
+  useEffect(() => {
+    if (activeTab === "catalog") {
+      setLoadingCatalog(true);
+      fetch("/api/ebay/catalog?q=truck")
+        .then(res => res.json())
+        .then(data => setCatalog(data))
+        .catch(err => console.error("Failed to load catalog:", err))
+        .finally(() => setLoadingCatalog(false));
+    }
+  }, [activeTab]);
+
+
   useEffect(() => {
     if (activeTab === "drivers") {
       fetchDrivers();
@@ -494,6 +509,42 @@ const renderSponsors = () => (
     </div>
   );
 
+  const renderCatalog = () => (
+  <div className="space-y-6">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 className="text-xl font-bold text-gray-900 mb-4">eBay Catalog</h2>
+      {loadingCatalog ? (
+        <p>Loading eBay items...</p>
+      ) : (
+        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "20px" }}>
+          {catalog.map((item) => (
+            <div className="card border border-gray-200 rounded-xl p-4" key={item.itemId}>
+              <img
+                src={item.image?.imageUrl}
+                alt={item.title}
+                style={{ width: "100%", height: "160px", objectFit: "cover", borderRadius: "8px" }}
+              />
+              <h3 className="text-md font-semibold mt-2">{item.title}</h3>
+              <p className="text-gray-700 font-medium">
+                ${item.price?.value} {item.price?.currency}
+              </p>
+              <a
+                href={item.itemWebUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                View on eBay →
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-gray-200 transition-all duration-300 flex flex-col`}>
@@ -509,6 +560,7 @@ const renderSponsors = () => (
             { id: "overview", label: "Overview", icon: Activity },
             { id: "drivers", label: "Drivers", icon: Users },
             { id: "sponsors", label: "Sponsors", icon: Package },
+            { id: "catalog", label: "Catalog", icon: ShoppingCart },
             { id: "reports", label: "Reports", icon: TrendingUp },
             { id: "settings", label: "Settings", icon: Settings }
           ].map((item) => (
@@ -561,6 +613,7 @@ const renderSponsors = () => (
           {activeTab === "overview" && renderOverview()}
           {activeTab === "drivers" && renderDrivers()}
           {activeTab === "sponsors" && renderSponsors()}
+          {activeTab === "catalog" && renderCatalog()}
           {activeTab === "reports" && renderReports()}
           {activeTab === "settings" && renderSettings()}
         </div>
