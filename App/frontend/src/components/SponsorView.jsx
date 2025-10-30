@@ -1,25 +1,16 @@
 // App/frontend/src/components/SponsorView.jsx
 import React from "react";
 
-/**
- * SponsorView
- * - Works with current project: uses /api/signup to create a driver account
- * - Tries to load drivers from /api/sponsor/drivers, then /api/users (if mounted)
- * - Falls back to demo data so UI renders even before backend routes exist
- *
- * Usage in App.jsx:
- *   import SponsorView from "./components/SponsorView.jsx";
- *   ...
- *   <div className={view === "sponsor" ? "view active" : "view"}>
- *     <SponsorView user={user} />
- *   </div>
- */
-
 export default function SponsorView({ user, onLogout }) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [profile, setProfile] = React.useState(null);
   const [drivers, setDrivers] = React.useState([]);
+
+  const [view, setView] = React.useState("dashboard");
+  const [catalog, setCatalog] = React.useState([]);
+  const [loadingCatalog, setLoadingCatalog] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState("truck"); // 🆕 Default search term
 
   React.useEffect(() => {
     let ignore = false;
@@ -27,7 +18,6 @@ export default function SponsorView({ user, onLogout }) {
       setLoading(true);
       setError("");
       try {
-        // Try sponsor profile (optional)
         let me = null;
         try {
           const meRes = await fetch("/api/sponsor/me");
@@ -41,7 +31,6 @@ export default function SponsorView({ user, onLogout }) {
           };
         }
 
-        // Try drivers from preferred endpoint first, then fallback to /api/users
         let list = [];
         try {
           const d1 = await fetch("/api/sponsor/drivers");
@@ -55,7 +44,6 @@ export default function SponsorView({ user, onLogout }) {
             const d2 = await fetch("/api/users");
             if (d2.ok) {
               const j = await d2.json();
-              // normalize to expected shape
               const arr = j?.users || j || [];
               list = arr.map((u) => ({
                 username: u.username || u.name || "unknown",
@@ -67,7 +55,7 @@ export default function SponsorView({ user, onLogout }) {
             }
           } catch {}
         }
-        // Demo fallback if still empty
+
         if (!list.length) {
           list = [
             { username: "driver_jane", email: "jane@example.com", created_at: "2025-09-10", last_login: "2025-09-18", status: "Active" },
@@ -90,6 +78,27 @@ export default function SponsorView({ user, onLogout }) {
     return () => { ignore = true; };
   }, [user?.username]);
 
+  // 🆕 Function to load eBay catalog dynamically
+  async function loadCatalog(query) {
+    setLoadingCatalog(true);
+    try {
+      const res = await fetch(`/api/ebay/catalog?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setCatalog(data);
+    } catch (err) {
+      console.error("Failed to load eBay catalog:", err);
+    } finally {
+      setLoadingCatalog(false);
+    }
+  }
+
+  // Load default catalog when switching to Catalog view
+  React.useEffect(() => {
+    if (view === "catalog") {
+      loadCatalog(searchTerm);
+    }
+  }, [view]);
+
   async function inviteDriver({ username, email, password }) {
     const res = await fetch("/api/signup", {
       method: "POST",
@@ -98,66 +107,153 @@ export default function SponsorView({ user, onLogout }) {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "Failed to create driver");
-    // Optimistic add to roster
     setDrivers((prev) => [
       { username, email, created_at: new Date().toISOString().slice(0, 10), last_login: "—", status: "Invited" },
       ...prev,
     ]);
   }
 
+  // === DASHBOARD VIEW ===
+  if (view === "dashboard") {
+    return (
+      <div className="sponsor-view">
+        <header className="sv-header">
+          <h1>Sponsor Dashboard{profile?.name ? ` — ${profile.name}` : ""}</h1>
+          <p className="muted">Manage your drivers and monitor activity.</p>
+          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+            <button className="btn catalog-btn" onClick={() => setView("catalog")}>
+              Catalog
+            </button>
+            {onLogout && (
+              <button className="btn logout-btn" onClick={onLogout}>
+                Log Out
+              </button>
+            )}
+          </div>
+        </header>
+
+        {loading && <div className="panel">Loading…</div>}
+        {error && <div className="panel error">{error}</div>}
+
+        <section className="grid grid-3">
+          <StatCard label="Drivers" value={profile?.stats?.drivers ?? drivers.length} />
+          <StatCard label="Active Trips" value={profile?.stats?.activeTrips ?? 0} />
+          <StatCard label="Monthly Spend" value={`$${((profile?.stats?.monthlySpend ?? 0) * 1).toFixed(2)}`} />
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <h2 className="panel-title">Driver Roster</h2>
+            <InviteDriver onInvite={inviteDriver} />
+          </div>
+
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Created</th>
+                  <th>Last Login</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drivers.map((d) => (
+                  <tr key={`${d.username}-${d.email}`}>
+                    <td>{d.username}</td>
+                    <td>{d.email}</td>
+                    <td>{d.created_at ?? "—"}</td>
+                    <td>{d.last_login ?? "—"}</td>
+                    <td><span className={`pill ${String(d.status || "—").toLowerCase()}`}>{d.status ?? "—"}</span></td>
+                  </tr>
+                ))}
+                {!drivers.length && (
+                  <tr><td colSpan={5} className="muted center">No drivers yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <style>{css}</style>
+      </div>
+    );
+  }
+
+  // === CATALOG VIEW ===
   return (
     <div className="sponsor-view">
       <header className="sv-header">
-        <h1>Sponsor Dashboard{profile?.name ? ` — ${profile.name}` : ""}</h1>
-        <p className="muted">Manage your drivers and monitor activity.</p>
-            {onLogout && (
-                <button className="btn logout-btn" onClick={onLogout}>
-                    Log Out
-                </button>
-            )}
+        <h1>eBay Catalog{profile?.name ? ` — ${profile.name}` : ""}</h1>
+        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+          <button className="btn catalog-btn" onClick={() => setView("dashboard")}>
+            Back
+          </button>
+          {onLogout && (
+            <button className="btn logout-btn" onClick={onLogout}>
+              Log Out
+            </button>
+          )}
+        </div>
       </header>
 
-      {loading && <div className="panel">Loading…</div>}
-      {error && <div className="panel error">{error}</div>}
-
-      <section className="grid grid-3">
-        <StatCard label="Drivers" value={profile?.stats?.drivers ?? drivers.length} />
-        <StatCard label="Active Trips" value={profile?.stats?.activeTrips ?? 0} />
-        <StatCard label="Monthly Spend" value={`$${((profile?.stats?.monthlySpend ?? 0) * 1).toFixed(2)}`} />
-      </section>
-
       <section className="panel">
-        <div className="panel-header">
-          <h2 className="panel-title">Driver Roster</h2>
-          <InviteDriver onInvite={inviteDriver} />
+        <h2 className="panel-title">eBay Catalog</h2>
+
+        {/* 🔍 Search bar added here */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+          <input
+            type="text"
+            placeholder="Search eBay..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="input"
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: "8px",
+              border: "1px solid #ddd",
+            }}
+          />
+          <button
+            className="btn catalog-btn"
+            onClick={() => loadCatalog(searchTerm)}
+          >
+            Search
+          </button>
         </div>
 
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Username</th>
-                <th>Email</th>
-                <th>Created</th>
-                <th>Last Login</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {drivers.map((d) => (
-                <tr key={`${d.username}-${d.email}`}>
-                  <td>{d.username}</td>
-                  <td>{d.email}</td>
-                  <td>{d.created_at ?? "—"}</td>
-                  <td>{d.last_login ?? "—"}</td>
-                  <td><span className={`pill ${String(d.status || "—").toLowerCase()}`}>{d.status ?? "—"}</span></td>
-                </tr>
-              ))}
-              {!drivers.length && (
-                <tr><td colSpan={5} className="muted center">No drivers yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+        {loadingCatalog && <p>Loading items...</p>}
+
+        <div className="grid grid-3">
+          {catalog.map((item) => (
+            <div key={item.itemId} className="panel">
+              <img
+                src={item.image?.imageUrl}
+                alt={item.title}
+                style={{
+                  width: "100%",
+                  height: "160px",
+                  objectFit: "cover",
+                  borderRadius: "8px",
+                }}
+              />
+              <h3 style={{ fontSize: "1rem", marginTop: "8px" }}>
+                {item.title}
+              </h3>
+              <p>
+                <strong>${item.price?.value}</strong> {item.price?.currency}
+              </p>
+              <a
+                href={item.itemWebUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on eBay →
+              </a>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -229,7 +325,7 @@ const css = `
 .sv-header .muted { color: #666; }
 
 .grid { display: grid; gap: 16px; }
-.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 
 .panel { background: #fff; border: 1px solid #eee; border-radius: 16px; padding: 16px; }
 .panel-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom: 8px; }
@@ -266,8 +362,16 @@ const css = `
   margin-top: 8px;
   font-weight: 600;
 }
+.logout-btn:hover { background: #c0392b; }
 
-.logout-btn:hover {
-  background: #c0392b;
+.catalog-btn {
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-weight: 600;
 }
+.catalog-btn:hover { background: #2980b9; }
 `;
