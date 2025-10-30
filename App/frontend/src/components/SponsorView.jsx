@@ -1,19 +1,16 @@
 // App/frontend/src/components/SponsorView.jsx
 import React from "react";
 
-/**
- * SponsorView
- * Adds Catalog button + simple eBay storefront view without changing existing layout.
- */
-
 export default function SponsorView({ user, onLogout }) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [profile, setProfile] = React.useState(null);
   const [drivers, setDrivers] = React.useState([]);
-  const [view, setView] = React.useState("dashboard"); // new: toggle between dashboard/catalog
+
+  const [view, setView] = React.useState("dashboard");
   const [catalog, setCatalog] = React.useState([]);
   const [loadingCatalog, setLoadingCatalog] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState("truck"); // 🆕 Default search term
 
   React.useEffect(() => {
     let ignore = false;
@@ -61,27 +58,9 @@ export default function SponsorView({ user, onLogout }) {
 
         if (!list.length) {
           list = [
-            {
-              username: "driver_jane",
-              email: "jane@example.com",
-              created_at: "2025-09-10",
-              last_login: "2025-09-18",
-              status: "Active",
-            },
-            {
-              username: "driver_john",
-              email: "john@example.com",
-              created_at: "2025-09-12",
-              last_login: "2025-09-17",
-              status: "Active",
-            },
-            {
-              username: "driver_amy",
-              email: "amy@example.com",
-              created_at: "2025-09-14",
-              last_login: "—",
-              status: "Invited",
-            },
+            { username: "driver_jane", email: "jane@example.com", created_at: "2025-09-10", last_login: "2025-09-18", status: "Active" },
+            { username: "driver_john", email: "john@example.com", created_at: "2025-09-12", last_login: "2025-09-17", status: "Active" },
+            { username: "driver_amy",  email: "amy@example.com",  created_at: "2025-09-14", last_login: "—",            status: "Invited" },
           ];
         }
 
@@ -96,20 +75,27 @@ export default function SponsorView({ user, onLogout }) {
       }
     }
     load();
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [user?.username]);
 
-  // Load eBay catalog when toggled
+  // 🆕 Function to load eBay catalog dynamically
+  async function loadCatalog(query) {
+    setLoadingCatalog(true);
+    try {
+      const res = await fetch(`/api/ebay/catalog?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setCatalog(data);
+    } catch (err) {
+      console.error("Failed to load eBay catalog:", err);
+    } finally {
+      setLoadingCatalog(false);
+    }
+  }
+
+  // Load default catalog when switching to Catalog view
   React.useEffect(() => {
     if (view === "catalog") {
-      setLoadingCatalog(true);
-      fetch("/api/ebay/catalog?q=truck")
-        .then((res) => res.json())
-        .then((data) => setCatalog(data))
-        .catch((err) => console.error("Failed to load eBay catalog:", err))
-        .finally(() => setLoadingCatalog(false));
+      loadCatalog(searchTerm);
     }
   }, [view]);
 
@@ -122,31 +108,20 @@ export default function SponsorView({ user, onLogout }) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "Failed to create driver");
     setDrivers((prev) => [
-      {
-        username,
-        email,
-        created_at: new Date().toISOString().slice(0, 10),
-        last_login: "—",
-        status: "Invited",
-      },
+      { username, email, created_at: new Date().toISOString().slice(0, 10), last_login: "—", status: "Invited" },
       ...prev,
     ]);
   }
 
-  // === NORMAL DASHBOARD VIEW ===
+  // === DASHBOARD VIEW ===
   if (view === "dashboard") {
     return (
       <div className="sponsor-view">
         <header className="sv-header">
-          <h1>
-            Sponsor Dashboard{profile?.name ? ` — ${profile.name}` : ""}
-          </h1>
+          <h1>Sponsor Dashboard{profile?.name ? ` — ${profile.name}` : ""}</h1>
           <p className="muted">Manage your drivers and monitor activity.</p>
           <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-            <button
-              className="btn catalog-btn"
-              onClick={() => setView("catalog")}
-            >
+            <button className="btn catalog-btn" onClick={() => setView("catalog")}>
               Catalog
             </button>
             {onLogout && (
@@ -161,20 +136,9 @@ export default function SponsorView({ user, onLogout }) {
         {error && <div className="panel error">{error}</div>}
 
         <section className="grid grid-3">
-          <StatCard
-            label="Drivers"
-            value={profile?.stats?.drivers ?? drivers.length}
-          />
-          <StatCard
-            label="Active Trips"
-            value={profile?.stats?.activeTrips ?? 0}
-          />
-          <StatCard
-            label="Monthly Spend"
-            value={`$${(
-              (profile?.stats?.monthlySpend ?? 0) * 1
-            ).toFixed(2)}`}
-          />
+          <StatCard label="Drivers" value={profile?.stats?.drivers ?? drivers.length} />
+          <StatCard label="Active Trips" value={profile?.stats?.activeTrips ?? 0} />
+          <StatCard label="Monthly Spend" value={`$${((profile?.stats?.monthlySpend ?? 0) * 1).toFixed(2)}`} />
         </section>
 
         <section className="panel">
@@ -201,21 +165,11 @@ export default function SponsorView({ user, onLogout }) {
                     <td>{d.email}</td>
                     <td>{d.created_at ?? "—"}</td>
                     <td>{d.last_login ?? "—"}</td>
-                    <td>
-                      <span
-                        className={`pill ${String(d.status || "—").toLowerCase()}`}
-                      >
-                        {d.status ?? "—"}
-                      </span>
-                    </td>
+                    <td><span className={`pill ${String(d.status || "—").toLowerCase()}`}>{d.status ?? "—"}</span></td>
                   </tr>
                 ))}
                 {!drivers.length && (
-                  <tr>
-                    <td colSpan={5} className="muted center">
-                      No drivers yet.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={5} className="muted center">No drivers yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -246,7 +200,32 @@ export default function SponsorView({ user, onLogout }) {
 
       <section className="panel">
         <h2 className="panel-title">eBay Catalog</h2>
+
+        {/* 🔍 Search bar added here */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+          <input
+            type="text"
+            placeholder="Search eBay..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="input"
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: "8px",
+              border: "1px solid #ddd",
+            }}
+          />
+          <button
+            className="btn catalog-btn"
+            onClick={() => loadCatalog(searchTerm)}
+          >
+            Search
+          </button>
+        </div>
+
         {loadingCatalog && <p>Loading items...</p>}
+
         <div className="grid grid-3">
           {catalog.map((item) => (
             <div key={item.itemId} className="panel">
@@ -294,8 +273,7 @@ function InviteDriver({ onInvite }) {
 
   async function submit(e) {
     e.preventDefault();
-    setErr("");
-    setOk("");
+    setErr(""); setOk("");
     if (!username || !email || !password) {
       setErr("All fields required");
       return;
@@ -304,9 +282,7 @@ function InviteDriver({ onInvite }) {
       setLoading(true);
       await onInvite({ username, email, password });
       setOk(`Invited ${username}`);
-      setUsername("");
-      setEmail("");
-      setPassword("");
+      setUsername(""); setEmail(""); setPassword("");
       setOpen(false);
     } catch (e) {
       setErr(e.message || "Invite failed");
@@ -318,45 +294,14 @@ function InviteDriver({ onInvite }) {
   return (
     <div className="invite">
       {!open ? (
-        <button className="btn btn-primary" onClick={() => setOpen(true)}>
-          + Invite Driver
-        </button>
+        <button className="btn btn-primary" onClick={() => setOpen(true)}>+ Invite Driver</button>
       ) : (
         <form className="invite-form" onSubmit={submit}>
-          <input
-            className="input"
-            placeholder="username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="temp password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <button className="btn btn-primary" disabled={loading} type="submit">
-            {loading ? "Creating…" : "Create"}
-          </button>
-          <button
-            className="btn"
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              setErr("");
-              setOk("");
-            }}
-          >
-            Cancel
-          </button>
+          <input className="input" placeholder="username" value={username} onChange={e=>setUsername(e.target.value)} />
+          <input className="input" placeholder="email" type="email" value={email} onChange={e=>setEmail(e.target.value)} />
+          <input className="input" placeholder="temp password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
+          <button className="btn btn-primary" disabled={loading} type="submit">{loading ? "Creating…" : "Create"}</button>
+          <button className="btn" type="button" onClick={()=>{setOpen(false); setErr(""); setOk("");}}>Cancel</button>
           {err && <span className="err">{err}</span>}
           {ok && <span className="ok">{ok}</span>}
         </form>
@@ -375,7 +320,6 @@ function StatCard({ label, value }) {
 }
 
 const css = `
-${/* existing CSS preserved */""}
 .sponsor-view { display: grid; gap: 16px; }
 .sv-header h1 { margin: 0; }
 .sv-header .muted { color: #666; }

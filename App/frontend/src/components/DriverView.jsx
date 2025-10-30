@@ -1,21 +1,15 @@
 // App/frontend/src/components/DriverView.jsx
 import React from "react";
 
-/**
- * DriverView
- * Adds Catalog button and eBay storefront view.
- * Layout unchanged — only new section toggle + fetch logic.
- */
-
 export default function DriverView({ user, onLogout }) {
   const [health, setHealth] = React.useState({ ok: null, msg: "" });
   const [db, setDb] = React.useState({ ok: null, msg: "" });
   const [loading, setLoading] = React.useState(true);
-  const [view, setView] = React.useState("dashboard"); // new: toggle between dashboard/catalog
+  const [view, setView] = React.useState("dashboard");
   const [catalog, setCatalog] = React.useState([]);
   const [loadingCatalog, setLoadingCatalog] = React.useState(false);
+  const [search, setSearch] = React.useState("truck"); // new search state
 
-  // In case parent didn't pass user (e.g., on refresh), read from localStorage
   const effectiveUser = React.useMemo(() => {
     if (user) return user;
     try {
@@ -28,11 +22,9 @@ export default function DriverView({ user, onLogout }) {
 
   React.useEffect(() => {
     let ignore = false;
-
     async function check() {
       setLoading(true);
       try {
-        // Backend health
         const h = await fetch("/api/health").catch(() => null);
         if (!ignore) {
           if (h && h.ok) {
@@ -43,7 +35,6 @@ export default function DriverView({ user, onLogout }) {
           }
         }
 
-        // DB connectivity
         const d = await fetch("/api/test-db").catch(() => null);
         if (!ignore) {
           if (d && d.ok) {
@@ -74,16 +65,23 @@ export default function DriverView({ user, onLogout }) {
     };
   }, []);
 
-  // Fetch eBay catalog when toggled
-  React.useEffect(() => {
-    if (view === "catalog") {
-      setLoadingCatalog(true);
-      fetch("/api/ebay/catalog?q=truck")
-        .then((res) => res.json())
-        .then((data) => setCatalog(data))
-        .catch((err) => console.error("Failed to load eBay catalog:", err))
-        .finally(() => setLoadingCatalog(false));
+  // Fetch eBay catalog
+  async function loadCatalog(query) {
+    setLoadingCatalog(true);
+    try {
+      const res = await fetch(`/api/ebay/catalog?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setCatalog(data);
+    } catch (err) {
+      console.error("Failed to load eBay catalog:", err);
+    } finally {
+      setLoadingCatalog(false);
     }
+  }
+
+  // Automatically load when switching to catalog view
+  React.useEffect(() => {
+    if (view === "catalog") loadCatalog(search);
   }, [view]);
 
   // === DASHBOARD VIEW ===
@@ -125,15 +123,10 @@ export default function DriverView({ user, onLogout }) {
           />
           <StatCard
             label="Database"
-            value={
-              db.ok === null ? "…" : db.ok ? "Connected" : "Error"
-            }
+            value={db.ok === null ? "…" : db.ok ? "Connected" : "Error"}
             good={db.ok === true}
           />
-          <StatCard
-            label="Account"
-            value={effectiveUser?.email || "Not set"}
-          />
+          <StatCard label="Account" value={effectiveUser?.email || "Not set"} />
         </section>
 
         <section className="panel">
@@ -156,12 +149,6 @@ export default function DriverView({ user, onLogout }) {
               <strong>{db.ok === null ? "…" : db.msg}</strong>
             </li>
           </ul>
-          {!effectiveUser && (
-            <p className="muted">
-              Tip: Log in first to see your account info. (The login flow stores
-              your profile in <code>localStorage</code>.)
-            </p>
-          )}
         </section>
 
         <style>{css}</style>
@@ -191,7 +178,32 @@ export default function DriverView({ user, onLogout }) {
 
       <section className="panel">
         <h2 className="panel-title">eBay Catalog</h2>
+
+        {/* 🔍 Search Box */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+          <input
+            type="text"
+            placeholder="Search eBay..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input"
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: "8px",
+              border: "1px solid #ddd",
+            }}
+          />
+          <button
+            className="btn catalog-btn"
+            onClick={() => loadCatalog(search)}
+          >
+            Search
+          </button>
+        </div>
+
         {loadingCatalog && <p>Loading items...</p>}
+
         <div className="grid grid-3">
           {catalog.map((item) => (
             <div key={item.itemId} className="panel">
@@ -288,4 +300,11 @@ const css = `
 }
 
 .catalog-btn:hover { background: #2980b9; }
+
+.input {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
 `;
