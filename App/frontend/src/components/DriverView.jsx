@@ -8,7 +8,21 @@ export default function DriverView({ user, onLogout }) {
   const [view, setView] = React.useState("dashboard");
   const [catalog, setCatalog] = React.useState([]);
   const [loadingCatalog, setLoadingCatalog] = React.useState(false);
-  const [search, setSearch] = React.useState("truck"); // new search state
+  const [search, setSearch] = React.useState("truck");
+
+  // 🛒 Cart state (frontend only)
+  const [cart, setCart] = React.useState([]);
+  const [showCart, setShowCart] = React.useState(false);
+
+  // Optional persistence between refreshes
+  React.useEffect(() => {
+    const saved = localStorage.getItem("driverCart");
+    if (saved) setCart(JSON.parse(saved));
+  }, []);
+
+  React.useEffect(() => {
+    localStorage.setItem("driverCart", JSON.stringify(cart));
+  }, [cart]);
 
   const effectiveUser = React.useMemo(() => {
     if (user) return user;
@@ -65,7 +79,7 @@ export default function DriverView({ user, onLogout }) {
     };
   }, []);
 
-  // Fetch eBay catalog
+  // 🔍 eBay Catalog Fetch
   async function loadCatalog(query) {
     setLoadingCatalog(true);
     try {
@@ -79,12 +93,23 @@ export default function DriverView({ user, onLogout }) {
     }
   }
 
-  // Automatically load when switching to catalog view
   React.useEffect(() => {
     if (view === "catalog") loadCatalog(search);
   }, [view]);
 
-  // === DASHBOARD VIEW ===
+  // 🛒 Cart Logic
+  function addToCart(item) {
+    setCart((prev) => {
+      if (prev.some((i) => i.itemId === item.itemId)) return prev; // avoid duplicates
+      return [...prev, item];
+    });
+  }
+
+  function removeFromCart(itemId) {
+    setCart((prev) => prev.filter((i) => i.itemId !== itemId));
+  }
+
+  // === DASHBOARD ===
   if (view === "dashboard") {
     return (
       <div className="driver-view">
@@ -93,14 +118,9 @@ export default function DriverView({ user, onLogout }) {
             Driver Dashboard
             {effectiveUser?.username ? ` — ${effectiveUser.username}` : ""}
           </h1>
-          <p className="muted">
-            Welcome back! Here’s the current system status.
-          </p>
+          <p className="muted">Welcome back! Here’s the current system status.</p>
           <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-            <button
-              className="btn catalog-btn"
-              onClick={() => setView("catalog")}
-            >
+            <button className="btn catalog-btn" onClick={() => setView("catalog")}>
               Catalog
             </button>
             {onLogout && (
@@ -168,6 +188,12 @@ export default function DriverView({ user, onLogout }) {
           <button className="btn catalog-btn" onClick={() => setView("dashboard")}>
             Back
           </button>
+          <button
+            className="btn catalog-btn"
+            onClick={() => setShowCart((prev) => !prev)}
+          >
+            {showCart ? "Hide Cart" : `View Cart (${cart.length})`}
+          </button>
           {onLogout && (
             <button className="btn logout-btn" onClick={onLogout}>
               Log Out
@@ -179,13 +205,14 @@ export default function DriverView({ user, onLogout }) {
       <section className="panel">
         <h2 className="panel-title">eBay Catalog</h2>
 
-        {/* 🔍 Search Box */}
+        {/* 🔍 Search */}
         <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
           <input
             type="text"
             placeholder="Search eBay..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && loadCatalog(search)}
             className="input"
             style={{
               flex: 1,
@@ -217,9 +244,7 @@ export default function DriverView({ user, onLogout }) {
                   borderRadius: "8px",
                 }}
               />
-              <h3 style={{ fontSize: "1rem", marginTop: "8px" }}>
-                {item.title}
-              </h3>
+              <h3 style={{ fontSize: "1rem", marginTop: "8px" }}>{item.title}</h3>
               <p>
                 <strong>${item.price?.value}</strong> {item.price?.currency}
               </p>
@@ -230,9 +255,57 @@ export default function DriverView({ user, onLogout }) {
               >
                 View on eBay →
               </a>
+
+              {/* 🛒 Add to Cart */}
+              <button
+                onClick={() => addToCart(item)}
+                className="mt-2 text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg transition"
+              >
+                Add to Cart
+              </button>
             </div>
           ))}
         </div>
+
+        {/* 🧺 Cart Section */}
+        {showCart && (
+          <section className="mt-8 panel">
+            <h2 className="panel-title">Your Shopping Cart</h2>
+            {cart.length === 0 ? (
+              <p>Your cart is empty.</p>
+            ) : (
+              <div className="grid grid-3">
+                {cart.map((item) => (
+                  <div key={item.itemId} className="panel">
+                    <img
+                      src={item.image?.imageUrl}
+                      alt={item.title}
+                      style={{
+                        width: "100%",
+                        height: "120px",
+                        objectFit: "cover",
+                        borderRadius: "8px",
+                      }}
+                    />
+                    <h3 style={{ fontSize: "0.9rem", marginTop: "6px" }}>
+                      {item.title}
+                    </h3>
+                    <p>
+                      <strong>${item.price?.value}</strong>{" "}
+                      {item.price?.currency}
+                    </p>
+                    <button
+                      onClick={() => removeFromCart(item.itemId)}
+                      className="mt-2 text-sm text-red-600 hover:text-red-800"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </section>
 
       <style>{css}</style>
@@ -268,11 +341,6 @@ const css = `
 .stat-value { font-size: 24px; font-weight: 700; }
 .stat-label { color: #666; }
 
-.kv { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 2fr; row-gap: 10px; column-gap: 12px; }
-.kv li { display: contents; }
-.kv span { color: #666; }
-.kv strong { font-weight: 600; }
-
 .muted { color: #777; }
 .stat.ok .stat-value { color: #0a8f3d; }
 .stat.bad .stat-value { color: #b00020; }
@@ -286,7 +354,6 @@ const css = `
   cursor: pointer;
   font-weight: 600;
 }
-
 .logout-btn:hover { background: #c0392b; }
 
 .catalog-btn {
@@ -298,13 +365,5 @@ const css = `
   cursor: pointer;
   font-weight: 600;
 }
-
 .catalog-btn:hover { background: #2980b9; }
-
-.input {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 14px;
-}
 `;
