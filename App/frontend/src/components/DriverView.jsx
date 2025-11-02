@@ -5,25 +5,9 @@ export default function DriverView({ user, onLogout }) {
   const [health, setHealth] = React.useState({ ok: null, msg: "" });
   const [db, setDb] = React.useState({ ok: null, msg: "" });
   const [loading, setLoading] = React.useState(true);
-  const [view, setView] = React.useState("dashboard");
-  const [catalog, setCatalog] = React.useState([]);
-  const [loadingCatalog, setLoadingCatalog] = React.useState(false);
-  const [search, setSearch] = React.useState("truck");
+  const [invitations, setInvitations] = React.useState([]);
 
-  // 🛒 Cart state (frontend only)
-  const [cart, setCart] = React.useState([]);
-  const [showCart, setShowCart] = React.useState(false);
-
-  // Optional persistence between refreshes
-  React.useEffect(() => {
-    const saved = localStorage.getItem("driverCart");
-    if (saved) setCart(JSON.parse(saved));
-  }, []);
-
-  React.useEffect(() => {
-    localStorage.setItem("driverCart", JSON.stringify(cart));
-  }, [cart]);
-
+  // Load user info (from props or localStorage)
   const effectiveUser = React.useMemo(() => {
     if (user) return user;
     try {
@@ -34,278 +18,172 @@ export default function DriverView({ user, onLogout }) {
     }
   }, [user]);
 
+  // Check backend + DB
   React.useEffect(() => {
     let ignore = false;
     async function check() {
       setLoading(true);
       try {
         const h = await fetch("/api/health").catch(() => null);
-        if (!ignore) {
-          if (h && h.ok) {
-            const j = await h.json().catch(() => ({}));
-            setHealth({ ok: true, msg: j?.message || "Server is running" });
-          } else {
-            setHealth({ ok: false, msg: "Unable to reach backend" });
-          }
+        if (!ignore && h && h.ok) {
+          const j = await h.json();
+          setHealth({ ok: true, msg: j?.message || "Server is running" });
+        } else {
+          setHealth({ ok: false, msg: "Unable to reach backend" });
         }
 
         const d = await fetch("/api/test-db").catch(() => null);
-        if (!ignore) {
-          if (d && d.ok) {
-            const j = await d.json().catch(() => ({}));
-            setDb({
-              ok: true,
-              msg: j?.message || "Database connection successful",
-            });
-          } else {
-            let errMsg = "Database connection failed";
-            if (d) {
-              try {
-                const j = await d.json();
-                errMsg = j?.error || errMsg;
-              } catch {}
-            }
-            setDb({ ok: false, msg: errMsg });
-          }
+        if (!ignore && d && d.ok) {
+          const j = await d.json();
+          setDb({ ok: true, msg: j?.message || "Database connection successful" });
+        } else {
+          setDb({ ok: false, msg: "Database connection failed" });
         }
       } finally {
         if (!ignore) setLoading(false);
       }
     }
-
     check();
-    return () => {
-      ignore = true;
-    };
+    return () => (ignore = true);
   }, []);
 
-  // 🔍 eBay Catalog Fetch
-  async function loadCatalog(query) {
-    setLoadingCatalog(true);
+  // Load sponsor invitations
+  React.useEffect(() => {
+    if (effectiveUser?.username) loadInvitations();
+  }, [effectiveUser?.username]);
+
+  async function loadInvitations() {
     try {
-      const res = await fetch(`/api/ebay/catalog?q=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      setCatalog(data);
+      const res = await fetch(`/api/driver/invitations/${effectiveUser.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setInvitations(data);
+      }
     } catch (err) {
-      console.error("Failed to load eBay catalog:", err);
-    } finally {
-      setLoadingCatalog(false);
+      console.error("Failed to load invitations:", err);
     }
   }
 
-  React.useEffect(() => {
-    if (view === "catalog") loadCatalog(search);
-  }, [view]);
-
-  // 🛒 Cart Logic
-  function addToCart(item) {
-    setCart((prev) => {
-      if (prev.some((i) => i.itemId === item.itemId)) return prev; // avoid duplicates
-      return [...prev, item];
-    });
+  async function respond(sponsor_username, accept) {
+    try {
+      const res = await fetch("/api/driver/respond-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sponsor_username,
+          driver_username: effectiveUser.username,
+          accept,
+        }),
+      });
+      if (res.ok) {
+        loadInvitations(); // refresh list
+      } else {
+        console.error("Failed to respond to invitation");
+      }
+    } catch (err) {
+      console.error("Error responding to invite:", err);
+    }
   }
 
-  function removeFromCart(itemId) {
-    setCart((prev) => prev.filter((i) => i.itemId !== itemId));
-  }
-
-  // === DASHBOARD ===
-  if (view === "dashboard") {
-    return (
-      <div className="driver-view">
-        <header className="dv-header">
-          <h1>
-            Driver Dashboard
-            {effectiveUser?.username ? ` — ${effectiveUser.username}` : ""}
-          </h1>
-          <p className="muted">Welcome back! Here’s the current system status.</p>
-          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-            <button className="btn catalog-btn" onClick={() => setView("catalog")}>
-              Catalog
-            </button>
-            {onLogout && (
-              <button className="btn logout-btn" onClick={onLogout}>
-                Log Out
-              </button>
-            )}
-          </div>
-        </header>
-
-        {loading && <div className="panel">Loading…</div>}
-
-        <section className="grid grid-3">
-          <StatCard
-            label="Backend"
-            value={
-              health.ok === null ? "…" : health.ok ? "Online" : "Offline"
-            }
-            good={health.ok === true}
-          />
-          <StatCard
-            label="Database"
-            value={db.ok === null ? "…" : db.ok ? "Connected" : "Error"}
-            good={db.ok === true}
-          />
-          <StatCard label="Account" value={effectiveUser?.email || "Not set"} />
-        </section>
-
-        <section className="panel">
-          <h2 className="panel-title">Details</h2>
-          <ul className="kv">
-            <li>
-              <span>Username</span>
-              <strong>{effectiveUser?.username ?? "—"}</strong>
-            </li>
-            <li>
-              <span>Email</span>
-              <strong>{effectiveUser?.email ?? "—"}</strong>
-            </li>
-            <li>
-              <span>Backend</span>
-              <strong>{health.ok === null ? "…" : health.msg}</strong>
-            </li>
-            <li>
-              <span>Database</span>
-              <strong>{db.ok === null ? "…" : db.msg}</strong>
-            </li>
-          </ul>
-        </section>
-
-        <style>{css}</style>
-      </div>
-    );
-  }
-
-  // === CATALOG VIEW ===
   return (
     <div className="driver-view">
       <header className="dv-header">
         <h1>
-          eBay Catalog
+          Driver Dashboard
           {effectiveUser?.username ? ` — ${effectiveUser.username}` : ""}
         </h1>
-        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-          <button className="btn catalog-btn" onClick={() => setView("dashboard")}>
-            Back
+        <p className="muted">Welcome back! Here’s your current system status.</p>
+        {onLogout && (
+          <button className="btn logout-btn" onClick={onLogout}>
+            Log Out
           </button>
-          <button
-            className="btn catalog-btn"
-            onClick={() => setShowCart((prev) => !prev)}
-          >
-            {showCart ? "Hide Cart" : `View Cart (${cart.length})`}
-          </button>
-          {onLogout && (
-            <button className="btn logout-btn" onClick={onLogout}>
-              Log Out
-            </button>
-          )}
-        </div>
+        )}
       </header>
 
+      {loading && <div className="panel">Loading…</div>}
+
+      <section className="grid grid-3">
+        <StatCard
+          label="Backend"
+          value={health.ok === null ? "…" : health.ok ? "Online" : "Offline"}
+          good={health.ok === true}
+        />
+        <StatCard
+          label="Database"
+          value={db.ok === null ? "…" : db.ok ? "Connected" : "Error"}
+          good={db.ok === true}
+        />
+        <StatCard label="Account" value={effectiveUser?.email || "Not set"} />
+      </section>
+
+      {/* NEW: Sponsor Invitations Panel */}
       <section className="panel">
-        <h2 className="panel-title">eBay Catalog</h2>
-
-        {/* 🔍 Search */}
-        <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
-          <input
-            type="text"
-            placeholder="Search eBay..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && loadCatalog(search)}
-            className="input"
-            style={{
-              flex: 1,
-              padding: "8px 12px",
-              borderRadius: "8px",
-              border: "1px solid #ddd",
-            }}
-          />
-          <button
-            className="btn catalog-btn"
-            onClick={() => loadCatalog(search)}
-          >
-            Search
-          </button>
-        </div>
-
-        {loadingCatalog && <p>Loading items...</p>}
-
-        <div className="grid grid-3">
-          {catalog.map((item) => (
-            <div key={item.itemId} className="panel">
-              <img
-                src={item.image?.imageUrl}
-                alt={item.title}
-                style={{
-                  width: "100%",
-                  height: "160px",
-                  objectFit: "cover",
-                  borderRadius: "8px",
-                }}
-              />
-              <h3 style={{ fontSize: "1rem", marginTop: "8px" }}>{item.title}</h3>
-              <p>
-                <strong>${item.price?.value}</strong> {item.price?.currency}
-              </p>
-              <a
-                href={item.itemWebUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View on eBay →
-              </a>
-
-              {/* 🛒 Add to Cart */}
-              <button
-                onClick={() => addToCart(item)}
-                className="mt-2 text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg transition"
-              >
-                Add to Cart
-              </button>
+        <h2 className="panel-title">Sponsor Invitations</h2>
+        {invitations.length === 0 ? (
+          <p className="muted">No invitations yet.</p>
+        ) : (
+          invitations.map((inv) => (
+            <div
+              key={inv.sponsor_username}
+              className="flex justify-between items-center mb-2 border-b border-gray-100 pb-2"
+            >
+              <span>
+                <strong>{inv.sponsor_username}</strong>{" "}
+                <span className="text-gray-600 text-sm">({inv.sponsor_email})</span>
+              </span>
+              {inv.status === "pending" ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => respond(inv.sponsor_username, true)}
+                    className="btn btn-primary"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => respond(inv.sponsor_username, false)}
+                    className="btn"
+                  >
+                    Decline
+                  </button>
+                </div>
+              ) : (
+                <span
+                  className={`text-sm font-medium ${
+                    inv.status === "accepted"
+                      ? "text-green-600"
+                      : inv.status === "declined"
+                      ? "text-red-600"
+                      : "text-gray-600"
+                  }`}
+                >
+                  {inv.status}
+                </span>
+              )}
             </div>
-          ))}
-        </div>
-
-        {/* 🧺 Cart Section */}
-        {showCart && (
-          <section className="mt-8 panel">
-            <h2 className="panel-title">Your Shopping Cart</h2>
-            {cart.length === 0 ? (
-              <p>Your cart is empty.</p>
-            ) : (
-              <div className="grid grid-3">
-                {cart.map((item) => (
-                  <div key={item.itemId} className="panel">
-                    <img
-                      src={item.image?.imageUrl}
-                      alt={item.title}
-                      style={{
-                        width: "100%",
-                        height: "120px",
-                        objectFit: "cover",
-                        borderRadius: "8px",
-                      }}
-                    />
-                    <h3 style={{ fontSize: "0.9rem", marginTop: "6px" }}>
-                      {item.title}
-                    </h3>
-                    <p>
-                      <strong>${item.price?.value}</strong>{" "}
-                      {item.price?.currency}
-                    </p>
-                    <button
-                      onClick={() => removeFromCart(item.itemId)}
-                      className="mt-2 text-sm text-red-600 hover:text-red-800"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          ))
         )}
+      </section>
+
+      <section className="panel">
+        <h2 className="panel-title">Details</h2>
+        <ul className="kv">
+          <li>
+            <span>Username</span>
+            <strong>{effectiveUser?.username ?? "—"}</strong>
+          </li>
+          <li>
+            <span>Email</span>
+            <strong>{effectiveUser?.email ?? "—"}</strong>
+          </li>
+          <li>
+            <span>Backend</span>
+            <strong>{health.ok === null ? "…" : health.msg}</strong>
+          </li>
+          <li>
+            <span>Database</span>
+            <strong>{db.ok === null ? "…" : db.msg}</strong>
+          </li>
+        </ul>
       </section>
 
       <style>{css}</style>
@@ -332,18 +210,39 @@ const css = `
 .dv-header .muted { color: #666; }
 
 .grid { display: grid; gap: 16px; }
-.grid-3 { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 .panel { background: #fff; border: 1px solid #eee; border-radius: 16px; padding: 16px; }
-.panel-title { margin: 0 0 12px; }
+.panel-title { margin: 0 0 12px; font-weight: 600; }
 
 .stat { text-align: center; }
 .stat-value { font-size: 24px; font-weight: 700; }
 .stat-label { color: #666; }
 
+.kv { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 2fr; row-gap: 10px; column-gap: 12px; }
+.kv li { display: contents; }
+.kv span { color: #666; }
+.kv strong { font-weight: 600; }
+
 .muted { color: #777; }
 .stat.ok .stat-value { color: #0a8f3d; }
 .stat.bad .stat-value { color: #b00020; }
+
+.btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: #fff;
+  cursor: pointer;
+  font-weight: 500;
+}
+.btn:hover { background: #f0f0f0; }
+.btn-primary {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+.btn-primary:hover { background: #0069d9; }
 
 .logout-btn {
   background: #e74c3c;
@@ -352,18 +251,8 @@ const css = `
   border-radius: 8px;
   padding: 8px 16px;
   cursor: pointer;
+  margin-top: 8px;
   font-weight: 600;
 }
 .logout-btn:hover { background: #c0392b; }
-
-.catalog-btn {
-  background: #3498db;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-weight: 600;
-}
-.catalog-btn:hover { background: #2980b9; }
 `;

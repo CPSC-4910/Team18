@@ -4,6 +4,8 @@ import sequelize from "./config/database.js";
 import authRouter from "./routes/auth.js";
 import User from "./models/User.js";
 import ebayRouter from "./routes/ebay.js";
+import invitationsRouter from "./routes/invitations.js";
+
 
 
 
@@ -13,6 +15,8 @@ const app = express();
 app.use(express.json());
 
 app.use("/api/ebay", ebayRouter);
+
+app.use(invitationsRouter);
 
 // CORS middleware - allows requests from frontend
 app.use((req, res, next) => {
