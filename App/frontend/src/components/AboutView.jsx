@@ -8,8 +8,8 @@ export default function AboutView() {
             </h2>
             <div className="kvs">
               <p><strong>Team #:</strong> 18</p>
-              <p><strong>Version # (Sprint #):</strong> 2</p>
-              <p><strong>Release Date:</strong> 09/22/2025</p>
+              <p><strong>Version # (Sprint #):</strong> 6</p>
+              <p><strong>Release Date:</strong> 11/04/2025</p>
             </div>
           </article>
   
