@@ -6,12 +6,13 @@ export default function SponsorView({ user, onLogout }) {
   const [error, setError] = React.useState("");
   const [profile, setProfile] = React.useState(null);
   const [drivers, setDrivers] = React.useState([]);
-
   const [view, setView] = React.useState("dashboard");
   const [catalog, setCatalog] = React.useState([]);
   const [loadingCatalog, setLoadingCatalog] = React.useState(false);
-  const [searchTerm, setSearchTerm] = React.useState("truck"); // 🆕 Default search term
+  const [searchTerm, setSearchTerm] = React.useState("truck");
+  const [refreshing, setRefreshing] = React.useState(false); // 🆕 for refresh button
 
+  // Load sponsor + drivers
   React.useEffect(() => {
     let ignore = false;
     async function load() {
@@ -31,36 +32,26 @@ export default function SponsorView({ user, onLogout }) {
           };
         }
 
+        // Load drivers (accepted)
         let list = [];
         try {
-          const d1 = await fetch("/api/sponsor/drivers");
+          const d1 = await fetch(`/api/sponsor/drivers/${me.name}`);
           if (d1.ok) {
             const j = await d1.json();
             list = j?.drivers || [];
           }
         } catch {}
-        if (!list.length) {
-          try {
-            const d2 = await fetch("/api/users");
-            if (d2.ok) {
-              const j = await d2.json();
-              const arr = j?.users || j || [];
-              list = arr.map((u) => ({
-                username: u.username || u.name || "unknown",
-                email: u.email || "—",
-                created_at: u.created_at || u.createdAt || "—",
-                last_login: u.last_login || u.lastLogin || "—",
-                status: "Active",
-              }));
-            }
-          } catch {}
-        }
 
         if (!list.length) {
+          // fallback data
           list = [
-            { username: "driver_jane", email: "jane@example.com", created_at: "2025-09-10", last_login: "2025-09-18", status: "Active" },
-            { username: "driver_john", email: "john@example.com", created_at: "2025-09-12", last_login: "2025-09-17", status: "Active" },
-            { username: "driver_amy",  email: "amy@example.com",  created_at: "2025-09-14", last_login: "—",            status: "Invited" },
+            {
+              username: "driver_jane",
+              email: "jane@example.com",
+              created_at: "2025-09-10",
+              last_login: "2025-09-18",
+              status: "Accepted",
+            },
           ];
         }
 
@@ -75,10 +66,35 @@ export default function SponsorView({ user, onLogout }) {
       }
     }
     load();
-    return () => { ignore = true; };
+    return () => {
+      ignore = true;
+    };
   }, [user?.username]);
 
-  // 🆕 Function to load eBay catalog dynamically
+  // Refresh roster (manual reload)
+  async function refreshDrivers() {
+    if (!profile?.name) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch(`/api/sponsor/drivers/${profile.name}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDrivers(data.drivers || []);
+      }
+    } catch (err) {
+      console.error("Error refreshing drivers:", err);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  // Load catalog when switched to "catalog"
+  React.useEffect(() => {
+    if (view === "catalog") {
+      loadCatalog(searchTerm);
+    }
+  }, [view]);
+
   async function loadCatalog(query) {
     setLoadingCatalog(true);
     try {
@@ -92,13 +108,6 @@ export default function SponsorView({ user, onLogout }) {
     }
   }
 
-  // Load default catalog when switching to Catalog view
-  React.useEffect(() => {
-    if (view === "catalog") {
-      loadCatalog(searchTerm);
-    }
-  }, [view]);
-
   async function inviteDriver({ username, email, password }) {
     const res = await fetch("/api/signup", {
       method: "POST",
@@ -108,13 +117,51 @@ export default function SponsorView({ user, onLogout }) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "Failed to create driver");
     setDrivers((prev) => [
-      { username, email, created_at: new Date().toISOString().slice(0, 10), last_login: "—", status: "Invited" },
+      {
+        username,
+        email,
+        created_at: new Date().toISOString().slice(0, 10),
+        last_login: "—",
+        status: "Invited",
+      },
       ...prev,
     ]);
   }
 
   // === DASHBOARD VIEW ===
   if (view === "dashboard") {
+        // 🆕 Remove a driver
+    async function handleRemoveDriver(driverUsername) {
+      if (!profile?.name) return;
+
+      const confirmDelete = window.confirm(
+        `Are you sure you want to remove ${driverUsername} from your roster?`
+      );
+      if (!confirmDelete) return;
+
+      try {
+        const res = await fetch("/api/sponsor/remove-driver", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sponsor_username: profile.name,
+            driver_username: driverUsername,
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`✅ ${data.message}`);
+          setDrivers((prev) => prev.filter((d) => d.username !== driverUsername));
+        } else {
+          alert(`❌ ${data.error || "Failed to remove driver"}`);
+        }
+      } catch (err) {
+        console.error("Error removing driver:", err);
+        alert("❌ Network error removing driver");
+      }
+    }
+
     return (
       <div className="sponsor-view">
         <header className="sv-header">
@@ -136,15 +183,24 @@ export default function SponsorView({ user, onLogout }) {
         {error && <div className="panel error">{error}</div>}
 
         <section className="grid grid-3">
-          <StatCard label="Drivers" value={profile?.stats?.drivers ?? drivers.length} />
+          <StatCard label="Drivers" value={drivers.length} />
           <StatCard label="Active Trips" value={profile?.stats?.activeTrips ?? 0} />
-          <StatCard label="Monthly Spend" value={`$${((profile?.stats?.monthlySpend ?? 0) * 1).toFixed(2)}`} />
+          <StatCard label="Monthly Spend" value={`$${(profile?.stats?.monthlySpend ?? 0).toFixed(2)}`} />
         </section>
 
         <section className="panel">
           <div className="panel-header">
             <h2 className="panel-title">Driver Roster</h2>
-            <InviteDriver onInvite={inviteDriver} />
+            <div style={{ display: "flex", gap: "8px" }}>
+              <InviteDriver sponsorName={profile?.name} onInvite={refreshDrivers} />
+              <button
+                onClick={refreshDrivers}
+                className="btn refresh-btn"
+                disabled={refreshing}
+              >
+                {refreshing ? "Refreshing..." : "🔄 Refresh Roster"}
+              </button>
+            </div>
           </div>
 
           <div className="table-wrap">
@@ -153,8 +209,6 @@ export default function SponsorView({ user, onLogout }) {
                 <tr>
                   <th>Username</th>
                   <th>Email</th>
-                  <th>Created</th>
-                  <th>Last Login</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -163,15 +217,30 @@ export default function SponsorView({ user, onLogout }) {
                   <tr key={`${d.username}-${d.email}`}>
                     <td>{d.username}</td>
                     <td>{d.email}</td>
-                    <td>{d.created_at ?? "—"}</td>
-                    <td>{d.last_login ?? "—"}</td>
-                    <td><span className={`pill ${String(d.status || "—").toLowerCase()}`}>{d.status ?? "—"}</span></td>
+                    <td>
+                      <span className={`pill ${String(d.status || "—").toLowerCase()}`}>
+                        {d.status ?? "—"}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        className="btn remove-btn"
+                        onClick={() => handleRemoveDriver(d.username)}
+                      >
+                        🗑️ Remove
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {!drivers.length && (
-                  <tr><td colSpan={5} className="muted center">No drivers yet.</td></tr>
+                  <tr>
+                    <td colSpan={4} className="muted center">
+                      No drivers yet.
+                    </td>
+                  </tr>
                 )}
               </tbody>
+
             </table>
           </div>
         </section>
@@ -200,8 +269,6 @@ export default function SponsorView({ user, onLogout }) {
 
       <section className="panel">
         <h2 className="panel-title">eBay Catalog</h2>
-
-        {/* 🔍 Search bar added here */}
         <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
           <input
             type="text"
@@ -216,10 +283,7 @@ export default function SponsorView({ user, onLogout }) {
               border: "1px solid #ddd",
             }}
           />
-          <button
-            className="btn catalog-btn"
-            onClick={() => loadCatalog(searchTerm)}
-          >
+          <button className="btn catalog-btn" onClick={() => loadCatalog(searchTerm)}>
             Search
           </button>
         </div>
@@ -239,17 +303,11 @@ export default function SponsorView({ user, onLogout }) {
                   borderRadius: "8px",
                 }}
               />
-              <h3 style={{ fontSize: "1rem", marginTop: "8px" }}>
-                {item.title}
-              </h3>
+              <h3 style={{ fontSize: "1rem", marginTop: "8px" }}>{item.title}</h3>
               <p>
                 <strong>${item.price?.value}</strong> {item.price?.currency}
               </p>
-              <a
-                href={item.itemWebUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a href={item.itemWebUrl} target="_blank" rel="noopener noreferrer">
                 View on eBay →
               </a>
             </div>
@@ -262,53 +320,137 @@ export default function SponsorView({ user, onLogout }) {
   );
 }
 
-function InviteDriver({ onInvite }) {
+function InviteDriver({ sponsorName, onInvite }) {
   const [open, setOpen] = React.useState(false);
-  const [username, setUsername] = React.useState("");
-  const [email, setEmail] = React.useState("");
-  const [password, setPassword] = React.useState("");
+  const [drivers, setDrivers] = React.useState([]);
+  const [selectedDriver, setSelectedDriver] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
   const [ok, setOk] = React.useState("");
 
+  // ✅ Safely load drivers only when dropdown is opened and sponsorName is defined
+  React.useEffect(() => {
+    if (open && sponsorName) {
+      (async function fetchDrivers() {
+        try {
+          setLoading(true);
+          setErr("");
+          const res = await fetch(`/api/available-drivers/${encodeURIComponent(sponsorName)}`);
+          if (!res.ok) {
+            throw new Error(`Failed to load drivers (${res.status})`);
+          }
+          const data = await res.json();
+          if (!Array.isArray(data)) throw new Error("Invalid data format from server");
+          setDrivers(data);
+        } catch (e) {
+          console.error("Error loading available drivers:", e);
+          setErr("Could not load available drivers. Please try again.");
+          setDrivers([]);
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }
+  }, [open, sponsorName]);
+
   async function submit(e) {
     e.preventDefault();
-    setErr(""); setOk("");
-    if (!username || !email || !password) {
-      setErr("All fields required");
+    setErr("");
+    setOk("");
+    if (!selectedDriver) {
+      setErr("Please select a driver");
       return;
     }
+
     try {
       setLoading(true);
-      await onInvite({ username, email, password });
-      setOk(`Invited ${username}`);
-      setUsername(""); setEmail(""); setPassword("");
+      const res = await fetch("/api/invite-driver", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sponsor_username: sponsorName,
+          driver_username: selectedDriver,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Invite failed");
+      setOk(`Invite sent to ${selectedDriver}`);
+      setSelectedDriver("");
       setOpen(false);
+      if (onInvite) onInvite(); // Refresh parent roster
     } catch (e) {
-      setErr(e.message || "Invite failed");
+      console.error("Error sending invite:", e);
+      setErr(e.message);
     } finally {
       setLoading(false);
     }
   }
 
+  // ✅ Guard: if sponsorName is missing, show nothing to avoid crashes
+  if (!sponsorName) {
+    return (
+      <div className="invite">
+        <p className="muted">No sponsor name found. Please log in again.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="invite">
       {!open ? (
-        <button className="btn btn-primary" onClick={() => setOpen(true)}>+ Invite Driver</button>
+        <button className="btn btn-primary" onClick={() => setOpen(true)}>
+          + Invite Driver
+        </button>
       ) : (
         <form className="invite-form" onSubmit={submit}>
-          <input className="input" placeholder="username" value={username} onChange={e=>setUsername(e.target.value)} />
-          <input className="input" placeholder="email" type="email" value={email} onChange={e=>setEmail(e.target.value)} />
-          <input className="input" placeholder="temp password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-          <button className="btn btn-primary" disabled={loading} type="submit">{loading ? "Creating…" : "Create"}</button>
-          <button className="btn" type="button" onClick={()=>{setOpen(false); setErr(""); setOk("");}}>Cancel</button>
+          {loading && <span className="muted">Loading drivers...</span>}
           {err && <span className="err">{err}</span>}
+          {!loading && drivers.length > 0 && (
+            <select
+              className="input"
+              value={selectedDriver}
+              onChange={(e) => setSelectedDriver(e.target.value)}
+            >
+              <option value="">Select a driver...</option>
+              {drivers.map((d) => (
+                <option key={d.username} value={d.username}>
+                  {d.username} ({d.email})
+                </option>
+              ))}
+            </select>
+          )}
+          {!loading && !drivers.length && !err && (
+            <span className="muted">No available drivers to invite.</span>
+          )}
+
+          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+            <button
+              className="btn btn-primary"
+              disabled={loading || !selectedDriver}
+              type="submit"
+            >
+              {loading ? "Inviting…" : "Send Invite"}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setErr("");
+                setOk("");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+
           {ok && <span className="ok">{ok}</span>}
         </form>
       )}
     </div>
   );
 }
+
 
 function StatCard({ label, value }) {
   return (
@@ -318,6 +460,8 @@ function StatCard({ label, value }) {
     </div>
   );
 }
+
+
 
 const css = `
 .sponsor-view { display: grid; gap: 16px; }
@@ -339,8 +483,9 @@ const css = `
 .center { text-align: center; }
 .muted { color: #777; }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #eee; }
-.pill.active { background: #eefbf1; color: #0a8f3d; border-color: #cef0d6; }
-.pill.invited { background: #eef3ff; color: #1e4dd8; border-color: #cfdaff; }
+.pill.active, .pill.accepted { background: #eefbf1; color: #0a8f3d; border-color: #cef0d6; }
+.pill.invited, .pill.pending { background: #eef3ff; color: #1e4dd8; border-color: #cfdaff; }
+.pill.declined { background: #fdecec; color: #d32f2f; border-color: #f5c6cb; }
 
 .invite { display:flex; align-items:center; gap: 12px; }
 .invite-form { display:flex; align-items:center; gap:8px; flex-wrap: wrap; }
@@ -349,29 +494,24 @@ const css = `
 .btn:hover { background:#f6f6f6; }
 .btn-primary { background:#000; color:#fff; border-color:#000; }
 .btn-primary:hover { opacity:.9; }
+.refresh-btn { background:#27ae60; color:white; border:none; border-radius:999px; }
+.refresh-btn:hover { background:#1e874b; }
 .err { margin-left:8px; color:#b00020; }
 .ok  { margin-left:8px; color:#0a8f3d; }
 
-.logout-btn {
+.logout-btn { background:#e74c3c; color:white; border:none; border-radius:8px; padding:8px 16px; cursor:pointer; margin-top:8px; font-weight:600; }
+.logout-btn:hover { background:#c0392b; }
+
+.catalog-btn { background:#3498db; color:white; border:none; border-radius:8px; padding:8px 16px; cursor:pointer; font-weight:600; }
+.catalog-btn:hover { background:#2980b9; }
+.remove-btn {
   background: #e74c3c;
   color: white;
   border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  cursor: pointer;
-  margin-top: 8px;
-  font-weight: 600;
+  border-radius: 999px;
 }
-.logout-btn:hover { background: #c0392b; }
+.remove-btn:hover {
+  background: #c0392b;
+}
 
-.catalog-btn {
-  background: #3498db;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-weight: 600;
-}
-.catalog-btn:hover { background: #2980b9; }
 `;

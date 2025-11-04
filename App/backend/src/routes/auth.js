@@ -208,7 +208,7 @@ router.post("/api/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
-    // Successful login: reset failed attempts and update last login
+    
     user.failed_attempts = 0;
     user.last_failed_at = null;
     user.locked_until = null;
@@ -217,7 +217,7 @@ router.post("/api/login", async (req, res) => {
 
     console.log("[LOGIN OK]", user.username, "updated last_login:", user.last_login);
 
-    // Respond with the minimal user info your frontend expects
+    
     return res.json({
       user: {
         username: user.username,
@@ -233,6 +233,51 @@ router.post("/api/login", async (req, res) => {
     res.status(500).json({ error: "Server error during login" });
   }
 });
+
+
+// DELETE /api/users/:username
+router.delete("/users/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    
+    const user = await User.findOne({ where: { username } });
+    if (!user) {
+      return res.status(404).json({ error: `User '${username}' not found.` });
+    }
+
+    //only admins can delete users 
+     if (req.user?.role !== "admin") {
+       return res.status(403).json({ error: "Access denied: Admins only" });
+     }
+
+    
+    const [role] = [user.role.toLowerCase()];
+    const sequelize = User.sequelize; 
+
+    if (role === "driver" || role === "sponsor") {
+      
+      await sequelize.query(
+        `
+        DELETE FROM SponsorDriverLink
+        WHERE sponsor_username = :username OR driver_username = :username
+        `,
+        { replacements: { username } }
+      );
+    }
+
+    
+    await User.destroy({ where: { username } });
+
+    res.json({
+      message: `✅ User '${username}' (role: ${role}) deleted successfully, along with any linked records.`,
+    });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    res.status(500).json({ error: "Server error deleting user and linked records." });
+  }
+});
+
 
 
 export default router;
