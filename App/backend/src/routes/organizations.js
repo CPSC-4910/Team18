@@ -3,10 +3,9 @@ import express from "express";
 import Organization from "../models/Organization.js";
 import User from "../models/User.js";
 import SponsorOrganizationLink from "../models/SponsorOrganizationLink.js";
-import SponsorOrganizationInvite from "../models/SponsorOrganizationInvite.js";
 
 import sequelize from "../config/database.js";
-import { Op } from "sequelize";
+
 
 
 const router = express.Router();
@@ -88,151 +87,107 @@ router.get("/by-creator/:username", async (req, res) => {
   }
 });
 
+// GET /api/organizations/all — return all organizations for dropdown selection
+router.get("/all", async (req, res) => {
+  try {
+    const orgs = await Organization.findAll({
+      attributes: ["id", "name", "status", "created_at"],
+      order: [["name", "ASC"]],
+    });
+    res.json(orgs);
+  } catch (error) {
+    console.error("[ORG GET ALL] Error:", error);
+    res.status(500).json({ error: "Failed to load organizations." });
+  }
+});
+
+
 // GET /api/organizations/by-sponsor/:username
 router.get("/by-sponsor/:username", async (req, res) => {
   try {
     const { username } = req.params;
 
+    // Find all organizations linked to this sponsor
     const links = await SponsorOrganizationLink.findAll({
       where: { sponsor_username: username },
       include: [
         {
           model: Organization,
-          as: "organization", // must match alias from model
-          attributes: ["id", "name", "created_by", "created_at"],
+          attributes: ["id", "name", "status", "created_at"],
         },
       ],
+      order: [["is_active", "DESC"], ["joined_at", "ASC"]], // active first, then oldest join
     });
 
-    if (!links.length)
-      return res.status(404).json({ error: "No organizations found for this sponsor." });
+    // If no orgs found
+    if (!links.length) {
+      return res.json([]);
+    }
 
-    const orgs = links.map(link => ({
-      id: link.organization.id,
-      name: link.organization.name,
-      created_by: link.organization.created_by,
-      created_at: link.organization.created_at,
-      role: link.role,
+    // Extract clean organization list
+    const orgs = links.map((l) => ({
+      id: l.Organization.id,
+      name: l.Organization.name,
+      status: l.Organization.status,
+      created_at: l.Organization.created_at,
+      is_active: l.is_active,
     }));
 
+    console.log(`[ORG GET BY SPONSOR] ${username} → ${orgs.length} orgs`);
     res.json(orgs);
   } catch (error) {
     console.error("[ORG GET BY SPONSOR] Error:", error);
-    res.status(500).json({ error: "Internal server error fetching organizations." });
+    res.status(500).json({ error: "Failed to fetch organizations." });
   }
 });
 
 
-// POST /api/organizations/invite-sponsor
-router.post("/invite-sponsor", async (req, res) => {
+// PATCH /api/organizations/set-active
+router.patch("/set-active", async (req, res) => {
   try {
-    const { organization_id, inviter_username, invitee_username } = req.body;
-
-    if (!organization_id || !inviter_username || !invitee_username) {
-      return res.status(400).json({ error: "Missing required fields." });
+    const { username, organization_id } = req.body;
+    if (!username || !organization_id) {
+      return res.status(400).json({ error: "Missing username or organization_id" });
     }
 
-    // Ensure both inviter and invitee exist
-    const inviter = await User.findOne({ where: { username: inviter_username } });
-    const invitee = await User.findOne({ where: { username: invitee_username } });
-
-    if (!inviter || !invitee)
-      return res.status(404).json({ error: "One or both users not found." });
-
-    if (inviter.role !== "sponsor" || invitee.role !== "sponsor")
-      return res.status(403).json({ error: "Only sponsors can send/receive invites." });
-
-    // Ensure inviter is linked to this org
-    const orgLink = await SponsorOrganizationLink.findOne({
-      where: { sponsor_username: inviter_username, organization_id },
+    // Check if sponsor already linked
+    let link = await SponsorOrganizationLink.findOne({
+      where: { sponsor_username: username, organization_id },
     });
 
-    if (!orgLink)
-      return res.status(403).json({ error: "You are not a member of this organization." });
-
-    // Prevent duplicates
-    const existingInvite = await SponsorOrganizationInvite.findOne({
-      where: { organization_id, invitee_username },
-    });
-    if (existingInvite)
-      return res.status(400).json({ error: "This sponsor is already invited to this organization." });
-
-    // Create the invite
-    const invite = await SponsorOrganizationInvite.create({
-      organization_id,
-      inviter_username,
-      invitee_username,
-    });
-
-    res.status(201).json({ message: "Invite sent successfully.", invite });
-  } catch (error) {
-    console.error("[INVITE SPONSOR] Error:", error);
-    res.status(500).json({ error: "Server error sending invite." });
-  }
-});
-
-// PATCH /api/organizations/respond-invite
-router.patch("/respond-invite", async (req, res) => {
-  try {
-    const { invite_id, response } = req.body;
-
-    if (!invite_id || !["accepted", "declined"].includes(response)) {
-      return res.status(400).json({ error: "Invalid or missing fields." });
-    }
-
-    const invite = await SponsorOrganizationInvite.findByPk(invite_id);
-    if (!invite) return res.status(404).json({ error: "Invite not found." });
-
-    if (invite.status !== "pending") {
-      return res.status(400).json({ error: "Invite already responded to." });
-    }
-
-    // Update invite status
-    invite.status = response;
-    invite.responded_at = new Date();
-    await invite.save();
-
-    if (response === "accepted") {
-      // Add the sponsor to the organization
-      await SponsorOrganizationLink.create({
-        sponsor_username: invite.invitee_username,
-        organization_id: invite.organization_id,
+    // If not linked yet, create link automatically
+    if (!link) {
+      link = await SponsorOrganizationLink.create({
+        sponsor_username: username,
+        organization_id,
         role: "member",
+        is_active: false,
       });
+      console.log(`[ORG LINK CREATED] ${username} → org ${organization_id}`);
     }
 
-    res.json({ message: `Invite ${response} successfully.` });
+    // Deactivate all orgs for this sponsor
+    await SponsorOrganizationLink.update(
+      { is_active: false },
+      { where: { sponsor_username: username } }
+    );
+
+    // Activate chosen one
+    await SponsorOrganizationLink.update(
+      { is_active: true },
+      { where: { sponsor_username: username, organization_id } }
+    );
+
+    console.log(`[ORG ACTIVE] ${username} → org ${organization_id}`);
+    res.json({ message: "Active organization set successfully." });
   } catch (error) {
-    console.error("[RESPOND INVITE] Error:", error);
-    res.status(500).json({ error: "Server error responding to invite." });
+    console.error("[ORG SET ACTIVE] Error:", error);
+    res.status(500).json({ error: "Internal server error setting active organization." });
   }
 });
 
-// GET /api/organizations/invites/:username
-router.get("/invites/:username", async (req, res) => {
-  try {
-    const { username } = req.params;
 
-    const invites = await SponsorOrganizationInvite.findAll({
-      where: {
-        [Op.or]: [
-          { inviter_username: username },
-          { invitee_username: username },
-        ],
-      },
-      order: [["invited_at", "DESC"]],
-    });
 
-    if (!invites.length) {
-      return res.json([]); // Empty list
-    }
-
-    res.json(invites);
-  } catch (error) {
-    console.error("[ORG GET INVITES] Error:", error);
-    res.status(500).json({ error: "Error fetching invites." });
-  }
-});
 
 
 export default router;

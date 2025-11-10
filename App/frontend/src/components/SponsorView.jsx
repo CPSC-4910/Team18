@@ -29,12 +29,13 @@ export default function SponsorView({ user, onLogout }) {
         const driverData = driverRes.ok ? await driverRes.json() : { drivers: [] };
         setDrivers(driverData.drivers);
 
-        // Load organizations for this sponsor
-        const orgRes = await fetch(`/api/organizations/by-sponsor/${me.name}`);
-        if (orgRes.ok) {
-          const orgData = await orgRes.json();
-          setOrganizations(orgData);
-          if (orgData.length > 0) setActiveOrg(orgData[0]);
+    
+        // Load all existing organizations
+          const orgRes = await fetch(`/api/organizations/all`);
+          if (orgRes.ok) {
+            const orgData = await orgRes.json();
+            setOrganizations(orgData);
+            if (orgData.length > 0) setActiveOrg(orgData[0]);
         } else {
           setOrganizations([]);
           setActiveOrg(null);
@@ -126,12 +127,35 @@ export default function SponsorView({ user, onLogout }) {
               <label><strong>Active Organization:</strong></label>
               <select
                 value={activeOrg?.id || ""}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const org = organizations.find((o) => o.id === parseInt(e.target.value));
                   setActiveOrg(org);
+
+                  try {
+                    const res = await fetch("/api/organizations/set-active", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        username: profile?.name,
+                        organization_id: org.id,
+                      }),
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok) {
+                      alert(`❌ ${data.error || "Failed to update active organization."}`);
+                    } else {
+                      alert(`✅ Active organization set to ${org.name}`);
+                    }
+                  } catch (err) {
+                    console.error("Error updating active organization:", err);
+                    alert("❌ Server error updating active organization.");
+                  }
                 }}
+
                 className="input"
               >
+
                 {organizations.map((org) => (
                   <option key={org.id} value={org.id}>
                     {org.name}
