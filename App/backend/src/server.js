@@ -5,6 +5,7 @@ import authRouter from "./routes/auth.js";
 import User from "./models/User.js";
 import ebayRouter from "./routes/ebay.js";
 import invitationsRouter from "./routes/invitations.js";
+import organizationsRouter from "./routes/organizations.js";
 
 
 
@@ -17,6 +18,7 @@ app.use(express.json());
 app.use("/api/ebay", ebayRouter);
 
 app.use(invitationsRouter);
+
 
 // CORS middleware - allows requests from frontend
 app.use((req, res, next) => {
@@ -99,6 +101,9 @@ app.get("/api/sponsors", async (req, res) => {
 
 // Mount auth routes (handles /api/signup and /api/login)
 app.use(authRouter);
+
+app.use("/api/organizations", organizationsRouter);
+
 
 // Test database connection on startup
 sequelize.authenticate()
