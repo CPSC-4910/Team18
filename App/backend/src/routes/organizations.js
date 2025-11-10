@@ -3,7 +3,7 @@ import express from "express";
 import Organization from "../models/Organization.js";
 import User from "../models/User.js";
 import SponsorOrganizationLink from "../models/SponsorOrganizationLink.js";
-
+import OrganizationCatalog from "../models/OrganizationCatalog.js";
 import sequelize from "../config/database.js";
 
 
@@ -183,6 +183,62 @@ router.patch("/set-active", async (req, res) => {
   } catch (error) {
     console.error("[ORG SET ACTIVE] Error:", error);
     res.status(500).json({ error: "Internal server error setting active organization." });
+  }
+});
+
+
+// POST /api/organizations/catalog/add
+router.post("/catalog/add", async (req, res) => {
+  try {
+    const { organization_id, sponsor_username, item } = req.body;
+
+    if (!organization_id || !sponsor_username || !item?.itemId) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    const newItem = await OrganizationCatalog.create({
+      organization_id,
+      sponsor_username,
+      item_id: item.itemId,
+      title: item.title,
+      price: item.price?.value,
+      currency: item.price?.currency,
+      image_url: item.image?.imageUrl,
+      item_url: item.itemWebUrl,
+    });
+
+    res.json({ message: "Item added to catalog.", newItem });
+  } catch (err) {
+    console.error("[ORG CATALOG ADD] Error:", err);
+    res.status(500).json({ error: "Failed to add item to catalog." });
+  }
+});
+
+
+// GET /api/organizations/catalog/:organization_id
+router.get("/catalog/:organization_id", async (req, res) => {
+  try {
+    const { organization_id } = req.params;
+    const items = await OrganizationCatalog.findAll({
+      where: { organization_id },
+      order: [["created_at", "DESC"]],
+    });
+    res.json(items);
+  } catch (err) {
+    console.error("[ORG CATALOG GET] Error:", err);
+    res.status(500).json({ error: "Failed to load organization catalog." });
+  }
+});
+
+// DELETE /api/organizations/catalog/:id
+router.delete("/catalog/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await OrganizationCatalog.destroy({ where: { id } });
+    res.json({ message: "Item removed from catalog." });
+  } catch (err) {
+    console.error("[ORG CATALOG DELETE] Error:", err);
+    res.status(500).json({ error: "Failed to remove item from catalog." });
   }
 });
 

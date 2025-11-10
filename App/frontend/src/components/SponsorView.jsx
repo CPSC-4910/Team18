@@ -12,6 +12,7 @@ export default function SponsorView({ user, onLogout }) {
   const [orgSuccess, setOrgSuccess] = useState("");
   const [view, setView] = useState("dashboard");
   const [catalog, setCatalog] = useState([]);
+  const [myCatalog, setMyCatalog] = useState([]); // custom catalog
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [searchTerm, setSearchTerm] = useState("truck");
 
@@ -29,16 +30,12 @@ export default function SponsorView({ user, onLogout }) {
         const driverData = driverRes.ok ? await driverRes.json() : { drivers: [] };
         setDrivers(driverData.drivers);
 
-    
-        // Load all existing organizations
-          const orgRes = await fetch(`/api/organizations/all`);
-          if (orgRes.ok) {
-            const orgData = await orgRes.json();
-            setOrganizations(orgData);
-            if (orgData.length > 0) setActiveOrg(orgData[0]);
-        } else {
-          setOrganizations([]);
-          setActiveOrg(null);
+        // Load all organizations
+        const orgRes = await fetch(`/api/organizations/all`);
+        if (orgRes.ok) {
+          const orgData = await orgRes.json();
+          setOrganizations(orgData);
+          if (orgData.length > 0) setActiveOrg(orgData[0]);
         }
       } catch (err) {
         console.error("Error loading sponsor data:", err);
@@ -77,13 +74,21 @@ export default function SponsorView({ user, onLogout }) {
     }
   }
 
-  // Load eBay catalog
+  // Load eBay catalog + custom catalog
   async function loadCatalog(query) {
+    if (!activeOrg) return;
     setLoadingCatalog(true);
     try {
       const res = await fetch(`/api/ebay/catalog?q=${encodeURIComponent(query)}`);
       const data = await res.json();
       setCatalog(data);
+
+      // load custom org catalog
+      const orgRes = await fetch(`/api/organizations/catalog/${activeOrg.id}`);
+      if (orgRes.ok) {
+        const orgData = await orgRes.json();
+        setMyCatalog(orgData);
+      }
     } catch (err) {
       console.error("Failed to load eBay catalog:", err);
     } finally {
@@ -128,9 +133,10 @@ export default function SponsorView({ user, onLogout }) {
               <select
                 value={activeOrg?.id || ""}
                 onChange={async (e) => {
-                  const org = organizations.find((o) => o.id === parseInt(e.target.value));
+                  const org = organizations.find(
+                    (o) => o.id === parseInt(e.target.value)
+                  );
                   setActiveOrg(org);
-
                   try {
                     const res = await fetch("/api/organizations/set-active", {
                       method: "PATCH",
@@ -140,22 +146,19 @@ export default function SponsorView({ user, onLogout }) {
                         organization_id: org.id,
                       }),
                     });
-
                     const data = await res.json();
                     if (!res.ok) {
-                      alert(`❌ ${data.error || "Failed to update active organization."}`);
+                      alert(`❌ ${data.error || "Failed to set active organization."}`);
                     } else {
                       alert(`✅ Active organization set to ${org.name}`);
                     }
                   } catch (err) {
-                    console.error("Error updating active organization:", err);
-                    alert("❌ Server error updating active organization.");
+                    console.error("Error setting active organization:", err);
+                    alert("❌ Server error setting active organization.");
                   }
                 }}
-
                 className="input"
               >
-
                 {organizations.map((org) => (
                   <option key={org.id} value={org.id}>
                     {org.name}
@@ -240,7 +243,7 @@ export default function SponsorView({ user, onLogout }) {
       </header>
 
       <section className="panel">
-        <h2>eBay Catalog</h2>
+        <h2>Search eBay Catalog</h2>
         <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
           <input
             type="text"
@@ -276,9 +279,86 @@ export default function SponsorView({ user, onLogout }) {
               <a href={item.itemWebUrl} target="_blank" rel="noopener noreferrer">
                 View on eBay →
               </a>
+              <button
+                className="btn btn-primary"
+                onClick={async () => {
+                  await fetch("/api/organizations/catalog/add", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      organization_id: activeOrg.id,
+                      sponsor_username: profile.name,
+                      item,
+                    }),
+                  });
+                  alert(`✅ Added ${item.title} to your catalog.`);
+                  const updated = await fetch(`/api/organizations/catalog/${activeOrg.id}`);
+                  setMyCatalog(await updated.json());
+                }}
+              >
+                ➕ Add to My Catalog
+              </button>
             </div>
           ))}
         </div>
+
+        {/* 🛒 My Organization Catalog */}
+        <section className="panel" style={{ marginTop: "24px" }}>
+          <h2>My Organization Catalog</h2>
+          <p className="muted">
+            Items curated for <strong>{activeOrg?.name || "—"}</strong>
+          </p>
+
+          <button
+            className="btn refresh-btn"
+            onClick={async () => {
+              const res = await fetch(`/api/organizations/catalog/${activeOrg.id}`);
+              const data = await res.json();
+              setMyCatalog(data);
+            }}
+          >
+            🔄 Refresh Catalog
+          </button>
+
+          <div className="grid grid-3" style={{ marginTop: "16px" }}>
+            {myCatalog?.length ? (
+              myCatalog.map((item) => (
+                <div key={item.id} className="panel">
+                  <img
+                    src={item.image_url}
+                    alt={item.title}
+                    style={{
+                      width: "100%",
+                      height: "160px",
+                      objectFit: "cover",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <h3 style={{ fontSize: "1rem", marginTop: "8px" }}>{item.title}</h3>
+                  <p>
+                    <strong>${item.price}</strong> {item.currency}
+                  </p>
+                  <a href={item.item_url} target="_blank" rel="noopener noreferrer">
+                    View on eBay →
+                  </a>
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      await fetch(`/api/organizations/catalog/${item.id}`, {
+                        method: "DELETE",
+                      });
+                      setMyCatalog((prev) => prev.filter((i) => i.id !== item.id));
+                    }}
+                  >
+                    ❌ Remove
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="muted">No items in your organization catalog yet.</p>
+            )}
+          </div>
+        </section>
       </section>
 
       <style>{css}</style>
@@ -295,6 +375,8 @@ const css = `
 .btn { padding: 8px 14px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }
 .btn-primary { background: #007bff; color: white; border: none; }
 .btn-primary:hover { background: #0069d9; }
+.refresh-btn { background: #27ae60; color: white; border: none; border-radius: 8px; padding: 6px 12px; }
+.refresh-btn:hover { background: #1e874b; }
 .catalog-btn { background: #3498db; color: white; border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; font-weight: 600; }
 .catalog-btn:hover { background: #2980b9; }
 .err { color: #b00020; margin-top: 8px; }
