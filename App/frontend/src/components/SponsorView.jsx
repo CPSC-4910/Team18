@@ -10,7 +10,7 @@ export default function SponsorView({ user, onLogout }) {
   const [error, setError] = useState("");
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
-  const [view, setView] = useState("dashboard"); // dashboard | catalog
+  const [view, setView] = useState("dashboard");
   const [catalog, setCatalog] = useState([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [searchTerm, setSearchTerm] = useState("truck");
@@ -29,7 +29,7 @@ export default function SponsorView({ user, onLogout }) {
         const driverData = driverRes.ok ? await driverRes.json() : { drivers: [] };
         setDrivers(driverData.drivers);
 
-        // Load organizations
+        // Load organizations for this sponsor
         const orgRes = await fetch(`/api/organizations/by-sponsor/${me.name}`);
         if (orgRes.ok) {
           const orgData = await orgRes.json();
@@ -47,11 +47,12 @@ export default function SponsorView({ user, onLogout }) {
     load();
   }, [user?.username]);
 
-  // Create organization
+  // Create new organization
   async function handleCreateOrganization() {
     setCreating(true);
     setOrgError("");
     setOrgSuccess("");
+
     try {
       const res = await fetch(`/api/organizations`, {
         method: "POST",
@@ -75,7 +76,7 @@ export default function SponsorView({ user, onLogout }) {
     }
   }
 
-  // Load catalog
+  // Load eBay catalog
   async function loadCatalog(query) {
     setLoadingCatalog(true);
     try {
@@ -102,7 +103,7 @@ export default function SponsorView({ user, onLogout }) {
               </span>
             )}
           </h1>
-          <p className="muted">Manage your drivers, organizations, and invites.</p>
+          <p className="muted">Manage your drivers and organizations.</p>
           <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
             <button className="btn catalog-btn" onClick={() => setView("catalog")}>
               eBay Catalog
@@ -117,7 +118,7 @@ export default function SponsorView({ user, onLogout }) {
 
         {error && <div className="error">{error}</div>}
 
-        {/* 🟢 Organization Management Section */}
+        {/* 🏢 Organization Management */}
         <section className="panel">
           <h2>Organizations</h2>
           {organizations.length > 0 ? (
@@ -162,13 +163,7 @@ export default function SponsorView({ user, onLogout }) {
           </div>
         </section>
 
-        {/* 📨 Invitations Section */}
-        <section className="panel">
-          <h2>Invitations</h2>
-          <InviteManager profile={profile} organizations={organizations} />
-        </section>
-
-        {/* Drivers Section */}
+        {/* 🚚 Driver Roster */}
         <section className="panel">
           <h2>Driver Roster</h2>
           <table className="table">
@@ -187,6 +182,13 @@ export default function SponsorView({ user, onLogout }) {
                   <td>{d.status}</td>
                 </tr>
               ))}
+              {!drivers.length && (
+                <tr>
+                  <td colSpan="3" className="muted center">
+                    No drivers yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </section>
@@ -260,181 +262,6 @@ export default function SponsorView({ user, onLogout }) {
   );
 }
 
-/* === Invite Manager Subcomponent === */
-function InviteManager({ profile, organizations }) {
-  const [invites, setInvites] = useState([]);
-  const [targetSponsor, setTargetSponsor] = useState("");
-  const [selectedOrg, setSelectedOrg] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  async function loadInvites() {
-    if (!profile?.name) return;
-    try {
-      const res = await fetch(`/api/organizations/invites/${profile.name}`);
-      const data = await res.json();
-      setInvites(data);
-    } catch (err) {
-      console.error("Error loading invites:", err);
-      setError("Error loading invites.");
-    }
-  }
-
-  useEffect(() => {
-    loadInvites();
-  }, [profile?.name]);
-
-  async function sendInvite() {
-    if (!selectedOrg || !targetSponsor.trim()) {
-      setError("Please select an organization and enter a sponsor username.");
-      return;
-    }
-    setMessage("");
-    setError("");
-    try {
-      const res = await fetch("/api/organizations/invite-sponsor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organization_id: parseInt(selectedOrg),
-          inviter_username: profile.name,
-          invitee_username: targetSponsor.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setMessage("✅ Invite sent successfully!");
-        setTargetSponsor("");
-        loadInvites();
-      } else {
-        setError(data.error || "Failed to send invite.");
-      }
-    } catch (err) {
-      console.error("Error sending invite:", err);
-      setError("Server error sending invite.");
-    }
-  }
-
-  async function respondInvite(invite_id, response) {
-    try {
-      const res = await fetch("/api/organizations/respond-invite", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invite_id, response }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setMessage(`✅ Invite ${response} successfully.`);
-        loadInvites();
-      } else {
-        setError(data.error || "Failed to respond to invite.");
-      }
-    } catch (err) {
-      console.error("Error responding to invite:", err);
-      setError("Server error responding to invite.");
-    }
-  }
-
-  return (
-    <div>
-      {error && <p className="err">{error}</p>}
-      {message && <p className="ok">{message}</p>}
-
-      <h3>Incoming Invites</h3>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>From</th>
-            <th>Organization</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invites
-            .filter((i) => i.invitee_username === profile?.name)
-            .map((invite) => (
-              <tr key={invite.id}>
-                <td>{invite.inviter_username}</td>
-                <td>{invite.organization_id}</td>
-                <td>{invite.status}</td>
-                <td>
-                  {invite.status === "pending" ? (
-                    <>
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => respondInvite(invite.id, "accepted")}
-                      >
-                        Accept
-                      </button>
-                      <button
-                        className="btn"
-                        onClick={() => respondInvite(invite.id, "declined")}
-                      >
-                        Decline
-                      </button>
-                    </>
-                  ) : (
-                    <span>{invite.status}</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-
-      <h3>Outgoing Invites</h3>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>To</th>
-            <th>Organization</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invites
-            .filter((i) => i.inviter_username === profile?.name)
-            .map((invite) => (
-              <tr key={invite.id}>
-                <td>{invite.invitee_username}</td>
-                <td>{invite.organization_id}</td>
-                <td>{invite.status}</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-
-      <h3>Send New Invite</h3>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <select
-          className="input"
-          value={selectedOrg}
-          onChange={(e) => setSelectedOrg(e.target.value)}
-        >
-          <option value="">Select organization...</option>
-          {organizations.map((org) => (
-            <option key={org.id} value={org.id}>
-              {org.name}
-            </option>
-          ))}
-        </select>
-
-        <input
-          type="text"
-          value={targetSponsor}
-          onChange={(e) => setTargetSponsor(e.target.value)}
-          placeholder="Enter sponsor username"
-          className="input"
-        />
-        <button className="btn btn-primary" onClick={sendInvite}>
-          Send Invite
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* === STYLES === */
 const css = `
 .sponsor-view { display: grid; gap: 16px; }
@@ -449,6 +276,7 @@ const css = `
 .err { color: #b00020; margin-top: 8px; }
 .ok { color: #0a8f3d; margin-top: 8px; }
 .muted { color: #777; }
+.center { text-align: center; }
 .logout-btn { background: #e74c3c; color: white; border: none; padding: 8px 16px; border-radius: 8px; }
 .logout-btn:hover { background: #c0392b; }
 .grid { display: grid; gap: 16px; }
