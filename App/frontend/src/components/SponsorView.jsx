@@ -188,6 +188,8 @@ export default function SponsorView({ user, onLogout }) {
           <StatCard label="Monthly Spend" value={`$${(profile?.stats?.monthlySpend ?? 0).toFixed(2)}`} />
         </section>
 
+        <CreateOrganization />
+        
         <section className="panel">
           <div className="panel-header">
             <h2 className="panel-title">Driver Roster</h2>
@@ -249,7 +251,88 @@ export default function SponsorView({ user, onLogout }) {
       </div>
     );
   }
+// App/frontend/src/components/SponsorView.jsx
 
+// ... (after the StatCard component)
+
+function CreateOrganization({ onCreated }) {
+  const [name, setName] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [ok, setOk] = React.useState("");
+
+  async function submit(e) {
+    e.preventDefault();
+    setErr("");
+    setOk("");
+    if (!name) {
+      setErr("Organization name is required");
+      return;
+    }
+
+    // 1. Get the token from localStorage
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setErr("You are not logged in. Please log out and log in again.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const res = await fetch("/api/organizations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          // 2. Add the Authorization header
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data?.error || data?.message || "Failed to create organization");
+      }
+
+      setOk(`Organization "${name}" created!`);
+      setName("");
+      // Call the onCreated prop to refresh the list (optional)
+      if (onCreated) onCreated();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form className="panel" onSubmit={submit} style={{ marginTop: '16px' }}>
+      <div className="panel-header">
+        <h2 className="panel-title">Create New Organization</h2>
+      </div>
+      <p className="muted" style={{ margin: '0 0 12px' }}>
+        Create an organization to start managing drivers.
+      </p>
+      <div className="invite-form">
+        <input
+          className="input"
+          placeholder="Organization Name (e.g. Bob's Trucking)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{ minWidth: '280px' }}
+        />
+        <button className="btn btn-primary" disabled={loading} type="submit">
+          {loading ? "Creating…" : "Create"}
+        </button>
+        {err && <span className="err">{err}</span>}
+        {ok && <span className="ok">{ok}</span>}
+      </div>
+    </form>
+  );
+}
+
+// ... (rest of the file, like const css = ...)
   // === CATALOG VIEW ===
   return (
     <div className="sponsor-view">

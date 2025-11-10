@@ -47,7 +47,7 @@ export default function LoginView({ show, onLoginSuccess }) {
         
         // Call the success callback to switch to dashboard
         setTimeout(() => {
-          onLoginSuccess(data.user);
+          onLoginSuccess(data.user, data.token);
         }, 800);
       } else {
         // Login failed

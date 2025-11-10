@@ -3,10 +3,14 @@ import express from "express";
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import { Op } from "sequelize";
-import nodemailer from "nodemailer"
+import nodemailer from "nodemailer";
+import jwt from "jsonwebtoken";
+// --- 1. IMPORT MIDDLEWARE ---
+import { protect, isAdmin } from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 
-//nodemailer setup, this is what gets gmail to work
+//nodemailer setup
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -15,7 +19,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Send password reset code user for nodemailer
+// Send password reset code
 const sendResetEmail = async (userEmail, username, resetCode) => {
   await transporter.sendMail({
     from: `"TruckPoints" <${process.env.EMAIL_USER}>`,
@@ -25,8 +29,7 @@ const sendResetEmail = async (userEmail, username, resetCode) => {
   });
 };
 
-//this generates a code for authentication in resetting the users password. Once the user enters their username this function sends
-//the associated email a code needed to confirm the reset
+// POST /api/request-password-reset
 router.post("/api/request-password-reset", async (req, res) => {
   const { username } = req.body;
   if (!username) return res.status(400).json({ error: "Username is required" });
@@ -48,7 +51,7 @@ router.post("/api/request-password-reset", async (req, res) => {
   }
 });
 
-//this function accepts the code sent to the email, and updates the users password
+// POST /api/reset-password
 router.post("/api/reset-password", async (req, res) => {
   const { username, code, newPassword } = req.body;
   if (!username || !code || !newPassword) {
@@ -86,17 +89,14 @@ router.post("/api/signup", async (req, res) => {
   if (!username || !email || !password) {
     return res.status(400).json({ error: "All fields are required" });
   }
-
   if (password.length < 8) {
     return res.status(400).json({ error: "Password must be at least 8 characters" });
   }
 
-  // Determine role
   const allowedRoles = ["driver", "sponsor", "admin"];
   const userRole = allowedRoles.includes(role) ? role : "driver";
 
   try {
-    // Check if username or email already exists
     const existingUser = await User.findOne({
       where: {
         [Op.or]: [
@@ -110,11 +110,9 @@ router.post("/api/signup", async (req, res) => {
       return res.status(409).json({ error: "Username or email already exists" });
     }
 
-    // Hash password
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    // Create new user
     const newUser = await User.create({
       username: username,
       email: email,
@@ -152,7 +150,6 @@ router.post("/api/login", async (req, res) => {
   }
 
   try {
-    // Find user by username
     const user = await User.findByPk(username);
 
     if (!user) {
@@ -164,7 +161,7 @@ router.post("/api/login", async (req, res) => {
 
     const now = new Date();
 
-    // Reset failed attempts if last failed is more than 1 hour ago
+    // Reset failed attempts logic...
     if (user.last_failed_at && now - user.last_failed_at > 60 * 60 * 1000) {
       user.failed_attempts = 0;
       user.last_failed_at = null;
@@ -172,22 +169,20 @@ router.post("/api/login", async (req, res) => {
       console.log("[LOGIN] failed_attempts reset due to timeout");
     }
 
-    // Check if account is currently locked
+    // Check lock logic...
     if (user.locked_until && now < user.locked_until) {
       console.log("[LOGIN] account locked until", user.locked_until);
       return res.status(403).json({ error: `Account locked until ${user.locked_until.toLocaleString()}` });
     }
 
-    // Compare password
     const match = await bcrypt.compare(password, user.password);
     console.log("[LOGIN] password match?", match);
 
     if (!match) {
-      // Wrong password: increment failed attempts
+      // Failed attempt logic...
       const lastFailed = user.last_failed_at || now;
       let attempts = user.failed_attempts || 0;
 
-      // Reset counter if last failed attempt was more than 30 minutes ago
       if (now - lastFailed > 30 * 60 * 1000) {
         attempts = 1;
       } else {
@@ -197,18 +192,17 @@ router.post("/api/login", async (req, res) => {
       user.failed_attempts = attempts;
       user.last_failed_at = now;
 
-      // Lock account if attempts >= 5
       if (attempts >= 5) {
         user.locked_until = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour lock
         console.log("[LOGIN] account locked due to too many failed attempts");
       }
 
       await user.save();
-
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
     
+    // Successful login: reset failed attempts and update last login
     user.failed_attempts = 0;
     user.last_failed_at = null;
     user.locked_until = null;
@@ -217,7 +211,15 @@ router.post("/api/login", async (req, res) => {
 
     console.log("[LOGIN OK]", user.username, "updated last_login:", user.last_login);
 
+    // Create the token
+    const token = jwt.sign(
+      { username: user.username, role: user.role }, // Payload
+      process.env.JWT_SECRET,                      // Your secret key
+      { expiresIn: '1d' }                          // Token expires in 1 day
+    );
     
+    // --- 2. THIS IS THE FIX ---
+    // Return the user object AND the token
     return res.json({
       user: {
         username: user.username,
@@ -226,6 +228,7 @@ router.post("/api/login", async (req, res) => {
         last_login: user.last_login,
         created_at: user.created_at,
       },
+      token: token, // <--- SEND THE TOKEN BACK
     });
 
   } catch (err) {
@@ -236,20 +239,20 @@ router.post("/api/login", async (req, res) => {
 
 
 // DELETE /api/users/:username
-router.delete("/users/:username", async (req, res) => {
+// --- 3. APPLY MIDDLEWARE HERE ---
+// This route now first checks if the user is logged in (protect)
+// and then checks if they are an admin (isAdmin).
+router.delete("/users/:username", protect, isAdmin, async (req, res) => {
   try {
     const { username } = req.params;
 
-    
     const user = await User.findOne({ where: { username } });
     if (!user) {
       return res.status(404).json({ error: `User '${username}' not found.` });
     }
 
-    //only admins can delete users 
-     if (req.user?.role !== "admin") {
-       return res.status(403).json({ error: "Access denied: Admins only" });
-     }
+    // We can remove the manual check because the 'isAdmin' middleware already did it
+    // if (req.user?.role !== "admin") { ... }
 
     
     const [role] = [user.role.toLowerCase()];

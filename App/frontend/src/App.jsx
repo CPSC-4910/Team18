@@ -58,9 +58,10 @@ export default function App() {
     }
   };
 
-const handleLoginSuccess = (userData) => {
+const handleLoginSuccess = (userData, token) => { // <-- 1. Accept 'token'
   setUser(userData);
   localStorage.setItem("user", JSON.stringify(userData));
+  localStorage.setItem("token", token); // <-- 2. ADD THIS LINE to save the token
 
   // ✅ Redirect based on user role
   if (userData.role === "admin") {
@@ -79,9 +80,10 @@ const handleLoginSuccess = (userData) => {
   }
 };
 
-  const handleLogout = () => {
+const handleLogout = () => {
     setUser(null);
     localStorage.removeItem("user");
+    localStorage.removeItem("token"); // <-- 3. ADD THIS LINE to clear the token
     setView("about");
     history.pushState({ v: "about" }, "", "#/about");
   };

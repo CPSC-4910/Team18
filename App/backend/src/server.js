@@ -3,38 +3,27 @@ import express from "express";
 import sequelize from "./config/database.js";
 import authRouter from "./routes/auth.js";
 import User from "./models/User.js";
-import ebayRouter from "./routes/ebay.js";
-import invitationsRouter from "./routes/invitations.js";
-
-
-
+// --- 1. IMPORT YOUR NEW ORGANIZATION ROUTES ---
+import organizationRouter from "./routes/organizationRoutes.js";
 
 const app = express();
 
 // Middleware
 app.use(express.json());
 
-app.use("/api/ebay", ebayRouter);
-
-app.use(invitationsRouter);
-
-// CORS middleware - allows requests from frontend
+// CORS middleware
 app.use((req, res, next) => {
   const allowedOrigins = [
     'http://localhost:3000',
     'https://cpsc4911.com',
   ];
-
   const origin = req.headers.origin;
-
   if (allowedOrigins.includes(origin) || origin?.includes('amplifyapp.com')) {
     res.header('Access-Control-Allow-Origin', origin);
   }
-
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
-
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -64,18 +53,14 @@ app.get("/api/test-db", async (req, res) => {
 app.get("/api/drivers", async (req, res) => {
   try {
     const drivers = await User.findAll({
-      // If you didn't add a 'role' column, remove this where-clause
       where: { role: "driver" },
       attributes: [
         "username",
         "email",
         "last_login",
-        // Use the correct created timestamp per your model naming:
-        // If you use underscored: 'created_at'; if default Sequelize: 'createdAt'
         "created_at"
       ],
     });
-
     res.json({ drivers });
   } catch (err) {
     console.error("Error fetching drivers:", err);
@@ -97,8 +82,14 @@ app.get("/api/sponsors", async (req, res) => {
   }
 });
 
-// Mount auth routes (handles /api/signup and /api/login)
+// Mount auth routes (handles /api/signup, /api/login, etc.)
 app.use(authRouter);
+
+// --- 2. MOUNT YOUR NEW ORGANIZATION ROUTES ---
+// This tells Express to use your organization routes
+// and prefix them all with '/api/organizations'
+app.use("/api/organizations", organizationRouter);
+
 
 // Test database connection on startup
 sequelize.authenticate()
