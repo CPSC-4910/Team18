@@ -7,6 +7,13 @@ export default function DriverView({ user, onLogout }) {
   const [loading, setLoading] = React.useState(true);
   const [invitations, setInvitations] = React.useState([]);
 
+  // === NEW STATE ===
+  const [organization, setOrganization] = React.useState(null);
+  const [points, setPoints] = React.useState(0);
+  const [catalog, setCatalog] = React.useState([]);
+  const [loadingCatalog, setLoadingCatalog] = React.useState(false);
+  // =================
+
   // Load user info (from props or localStorage)
   const effectiveUser = React.useMemo(() => {
     if (user) return user;
@@ -18,27 +25,19 @@ export default function DriverView({ user, onLogout }) {
     }
   }, [user]);
 
-  // Check backend + DB
+  // Check backend + DB (existing logic)
   React.useEffect(() => {
     let ignore = false;
     async function check() {
       setLoading(true);
       try {
         const h = await fetch("/api/health").catch(() => null);
-        if (!ignore && h && h.ok) {
-          const j = await h.json();
-          setHealth({ ok: true, msg: j?.message || "Server is running" });
-        } else {
-          setHealth({ ok: false, msg: "Unable to reach backend" });
-        }
+        if (!ignore && h && h.ok) setHealth({ ok: true, msg: "Server is running" });
+        else setHealth({ ok: false, msg: "Unable to reach backend" });
 
         const d = await fetch("/api/test-db").catch(() => null);
-        if (!ignore && d && d.ok) {
-          const j = await d.json();
-          setDb({ ok: true, msg: j?.message || "Database connection successful" });
-        } else {
-          setDb({ ok: false, msg: "Database connection failed" });
-        }
+        if (!ignore && d && d.ok) setDb({ ok: true, msg: "Database connected" });
+        else setDb({ ok: false, msg: "Database connection failed" });
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -47,23 +46,61 @@ export default function DriverView({ user, onLogout }) {
     return () => (ignore = true);
   }, []);
 
-  // Load sponsor invitations
+  // Load invitations + NEW: Load organization, points, and catalog
   React.useEffect(() => {
-    if (effectiveUser?.username) loadInvitations();
+    if (effectiveUser?.username) {
+      loadInvitations();
+      loadOrganizationAndPoints();
+    }
   }, [effectiveUser?.username]);
 
+  // NEW: Load organization, points, and catalog
+  async function loadOrganizationAndPoints() {
+    if (!effectiveUser?.username) return;
+    try {
+      setLoadingCatalog(true);
+      const res = await fetch(`/api/driver/my-organization/${effectiveUser.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOrganization(data.organization);
+        setPoints(data.points);
+        // If org was found, load its catalog
+        if (data.organization?.id) {
+          loadCatalog(data.organization.id);
+        }
+      } else {
+        setOrganization(null); // No active org
+      }
+    } catch (err) {
+      console.error("Failed to load organization info:", err);
+    } finally {
+      setLoadingCatalog(false);
+    }
+  }
+
+  // NEW: Load catalog for a specific org
+  async function loadCatalog(orgId) {
+    try {
+      const res = await fetch(`/api/organizations/catalog/${orgId}`);
+      if (res.ok) {
+        setCatalog(await res.json());
+      }
+    } catch (err) {
+      console.error("Failed to load catalog:", err);
+    }
+  }
+  
+  // (Existing) Load sponsor invitations
   async function loadInvitations() {
     try {
       const res = await fetch(`/api/driver/invitations/${effectiveUser.username}`);
-      if (res.ok) {
-        const data = await res.json();
-        setInvitations(data);
-      }
+      if (res.ok) setInvitations(await res.json());
     } catch (err) {
       console.error("Failed to load invitations:", err);
     }
   }
 
+  // (Existing) Respond to invitation
   async function respond(sponsor_username, accept) {
     try {
       const res = await fetch("/api/driver/respond-invite", {
@@ -77,6 +114,7 @@ export default function DriverView({ user, onLogout }) {
       });
       if (res.ok) {
         loadInvitations(); // refresh list
+        if (accept) loadOrganizationAndPoints(); // NEW: Refresh org if accepted
       } else {
         console.error("Failed to respond to invitation");
       }
@@ -84,6 +122,37 @@ export default function DriverView({ user, onLogout }) {
       console.error("Error responding to invite:", err);
     }
   }
+
+  // === NEW: REDEEM ITEM ===
+  async function redeemItem(item) {
+    if (!organization) return;
+    
+    if (!confirm(`Redeem "${item.title}" for ${item.points_cost} points?`)) return;
+
+    try {
+      const res = await fetch("/api/points/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driver_username: effectiveUser.username,
+          itemId: item.id,
+          organization_id: organization.id
+        })
+      });
+      
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Success! Redeemed "${data.itemTitle}".\nYour new balance is ${data.newBalance} points.`);
+        setPoints(data.newBalance); // Update points in UI
+      } else {
+        alert(`Error: ${data.error || "Failed to redeem item"}`);
+      }
+    } catch (err) {
+      console.error("Error redeeming item:", err);
+      alert("A server error occurred.");
+    }
+  }
+  // ==========================
 
   return (
     <div className="driver-view">
@@ -113,14 +182,57 @@ export default function DriverView({ user, onLogout }) {
           value={db.ok === null ? "…" : db.ok ? "Connected" : "Error"}
           good={db.ok === true}
         />
-        <StatCard label="Account" value={effectiveUser?.email || "Not set"} />
+        {/* NEW: Points StatCard */}
+        <StatCard
+          label="My Points"
+          value={organization ? points : "N/A"}
+          good={organization ? points > 0 : null}
+        />
       </section>
 
-      {/* NEW: Sponsor Invitations Panel */}
+      {/* NEW: Organization and Catalog Section */}
+      {organization ? (
+        <section className="panel">
+          <h2 className="panel-title">
+            Organization Catalog ({organization.name})
+          </h2>
+          {loadingCatalog && <p className="muted">Loading catalog...</p>}
+          
+          <div className="catalog-grid">
+            {catalog.length > 0 ? (
+              catalog.map((item) => (
+                <div key={item.id} className="catalog-card">
+                  <img src={item.image_url} alt={item.title} />
+                  <h3>{item.title}</h3>
+                  <p className="price">${item.price}</p>
+                  <p className="points">{item.points_cost} points</p>
+                  <a href={item.item_url} target="_blank" rel="noopener noreferrer" className="link">
+                    View on eBay →
+                  </a>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => redeemItem(item)}
+                    disabled={points < item.points_cost}
+                  >
+                    {points < item.points_cost ? "Need Points" : "Redeem"}
+                  </button>
+                </div>
+              ))
+            ) : (
+              !loadingCatalog && <p className="muted">No items in this catalog yet.</p>
+            )}
+          </div>
+        </section>
+      ) : (
+        !loading && <p className="muted">You are not yet linked to an organization. Please accept a sponsor invitation.</p>
+      )}
+
+
+      {/* Sponsor Invitations Panel (Existing) */}
       <section className="panel">
         <h2 className="panel-title">Sponsor Invitations</h2>
         {invitations.length === 0 ? (
-          <p className="muted">No invitations yet.</p>
+          <p className="muted">No pending invitations.</p>
         ) : (
           invitations.map((inv) => (
             <div
@@ -147,42 +259,21 @@ export default function DriverView({ user, onLogout }) {
                   </button>
                 </div>
               ) : (
-                <span
-                  className={`text-sm font-medium ${
-                    inv.status === "accepted"
-                      ? "text-green-600"
-                      : inv.status === "declined"
-                      ? "text-red-600"
-                      : "text-gray-600"
-                  }`}
-                >
-                  {inv.status}
-                </span>
+                <span className="status-badge">{inv.status}</span>
               )}
             </div>
           ))
         )}
       </section>
 
+      {/* Details Panel (Existing) */}
       <section className="panel">
         <h2 className="panel-title">Details</h2>
         <ul className="kv">
-          <li>
-            <span>Username</span>
-            <strong>{effectiveUser?.username ?? "—"}</strong>
-          </li>
-          <li>
-            <span>Email</span>
-            <strong>{effectiveUser?.email ?? "—"}</strong>
-          </li>
-          <li>
-            <span>Backend</span>
-            <strong>{health.ok === null ? "…" : health.msg}</strong>
-          </li>
-          <li>
-            <span>Database</span>
-            <strong>{db.ok === null ? "…" : db.msg}</strong>
-          </li>
+          <li><span>Username</span><strong>{effectiveUser?.username ?? "—"}</strong></li>
+          <li><span>Email</span><strong>{effectiveUser?.email ?? "—"}</strong></li>
+          <li><span>Backend</span><strong>{health.msg}</strong></li>
+          <li><span>Database</span><strong>{db.msg}</strong></li>
         </ul>
       </section>
 
@@ -193,11 +284,7 @@ export default function DriverView({ user, onLogout }) {
 
 function StatCard({ label, value, good }) {
   return (
-    <div
-      className={`panel stat ${
-        good === true ? "ok" : good === false ? "bad" : ""
-      }`}
-    >
+    <div className={`panel stat ${good === true ? "ok" : good === false ? "bad" : ""}`}>
       <div className="stat-value">{value}</div>
       <div className="stat-label">{label}</div>
     </div>
@@ -205,7 +292,7 @@ function StatCard({ label, value, good }) {
 }
 
 const css = `
-.driver-view { display: grid; gap: 16px; }
+.driver-view { display: grid; gap: 16px; max-width: 1200px; margin: 0 auto; }
 .dv-header h1 { margin: 0; }
 .dv-header .muted { color: #666; }
 
@@ -228,31 +315,33 @@ const css = `
 .stat.ok .stat-value { color: #0a8f3d; }
 .stat.bad .stat-value { color: #b00020; }
 
-.btn {
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
-  background: #fff;
-  cursor: pointer;
-  font-weight: 500;
-}
+.btn { padding: 6px 12px; border-radius: 8px; border: 1px solid #ddd; background: #fff; cursor: pointer; font-weight: 500; }
 .btn:hover { background: #f0f0f0; }
-.btn-primary {
-  background: #007bff;
-  color: white;
-  border-color: #007bff;
-}
+.btn:disabled { background: #f5f5f5; color: #aaa; cursor: not-allowed; }
+.btn-primary { background: #007bff; color: white; border-color: #007bff; }
 .btn-primary:hover { background: #0069d9; }
-
-.logout-btn {
-  background: #e74c3c;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  cursor: pointer;
-  margin-top: 8px;
-  font-weight: 600;
-}
+.btn-primary:disabled { background: #a9d6ff; border-color: #a9d6ff; }
+.logout-btn { background: #e74c3c; color: white; border: none; padding: 8px 16px; cursor: pointer; margin-top: 8px; font-weight: 600; }
 .logout-btn:hover { background: #c0392b; }
+
+/* Invitation list styles */
+.flex { display: flex; }
+.justify-between { justify-content: space-between; }
+.items-center { align-items: center; }
+.gap-2 { gap: 8px; }
+.mb-2 { margin-bottom: 8px; }
+.pb-2 { padding-bottom: 8px; }
+.border-b { border-bottom: 1px solid #eee; }
+.text-gray-600 { color: #666; }
+.text-sm { font-size: 0.875rem; }
+
+/* NEW CATALOG STYLES */
+.catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.catalog-card { border: 1px solid #e0e0e0; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; }
+.catalog-card img { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; }
+.catalog-card h3 { font-size: 14px; margin: 8px 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex-grow: 1; }
+.catalog-card .price { font-weight: 600; color: #666; margin: 4px 0; }
+.catalog-card .points { font-weight: 700; color: #0a8f3d; font-size: 1.1rem; margin: 4px 0; }
+.catalog-card .link { color: #007bff; font-size: 13px; display: block; margin: 8px 0; }
+.catalog-card .btn { width: 100%; margin-top: auto; }
 `;

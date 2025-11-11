@@ -1,252 +1,77 @@
+// backend/src/routes/invitations.js
 import express from "express";
-import pool from "../config/database.js"; // Sequelize instance
+import { Op } from "sequelize";
+import SponsorDriverLink from "../models/SponsorDriverLink.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
-/**
- * POST /api/invite-driver
- * Sponsor invites a driver (by username)
- */
+// POST /api/invite-driver - Sponsor invites a driver
 router.post("/api/invite-driver", async (req, res) => {
   const { sponsor_username, driver_username } = req.body;
-  if (!sponsor_username || !driver_username)
-    return res.status(400).json({ error: "Missing usernames" });
-
   try {
-    await pool.query(
-      `
-      INSERT INTO SponsorDriverLink (sponsor_username, driver_username, status)
-      VALUES (:sponsor_username, :driver_username, 'pending')
-      ON DUPLICATE KEY UPDATE status = 'pending'
-      `,
-      {
-        replacements: { sponsor_username, driver_username },
-      }
-    );
-    res.json({ success: true, message: "Invitation sent" });
+    const existing = await SponsorDriverLink.findOne({
+      where: { sponsor_username, driver_username },
+    });
+    if (existing) {
+      return res.status(409).json({ error: "Invitation already sent or link exists" });
+    }
+    await SponsorDriverLink.create({
+      sponsor_username,
+      driver_username,
+      status: "pending",
+    });
+    res.status(201).json({ message: "Invitation sent" });
   } catch (err) {
-    console.error("❌ Error inviting driver:", err.message);
-    res.status(500).json({ error: "Database error while inviting driver" });
+    res.status(500).json({ error: "Failed to send invitation" });
   }
 });
 
-/**
- * GET /api/driver/invitations/:driver_username
- * Driver retrieves their invitations
- */
-router.get("/api/driver/invitations/:driver_username", async (req, res) => {
-  const { driver_username } = req.params;
+// GET /api/driver/invitations/:username - Driver gets their invites
+router.get("/api/driver/invitations/:username", async (req, res) => {
   try {
-    const [rows] = await pool.query(
-      `
-      SELECT s.username AS sponsor_username, s.email AS sponsor_email, l.status
-      FROM SponsorDriverLink l
-      JOIN users s ON s.username = l.sponsor_username
-      WHERE l.driver_username = :driver_username
-      `,
-      {
-        replacements: { driver_username },
-      }
-    );
-    res.json(rows);
+    const invites = await SponsorDriverLink.findAll({
+      where: {
+        driver_username: req.params.username,
+        status: "pending" 
+      },
+      include: [{
+        model: User,
+        as: 'Sponsors',
+        attributes: ['email']
+      }]
+    });
+    
+    // Format the response to match frontend expectations
+    const formatted = invites.map(inv => ({
+        sponsor_username: inv.sponsor_username,
+        sponsor_email: inv.Sponsors[0]?.email || 'N/A',
+        status: inv.status
+    }));
+    
+    res.json(formatted);
   } catch (err) {
-    console.error("❌ Error fetching invitations:", err.message);
+    console.error("Error fetching invites:", err);
     res.status(500).json({ error: "Failed to fetch invitations" });
   }
 });
 
-/**
- * POST /api/driver/respond-invite
- * Driver accepts or declines an invite
- */
+// POST /api/driver/respond-invite - Driver accepts/declines
 router.post("/api/driver/respond-invite", async (req, res) => {
   const { sponsor_username, driver_username, accept } = req.body;
-  if (!sponsor_username || !driver_username)
-    return res.status(400).json({ error: "Missing usernames" });
-
-  const newStatus = accept ? "accepted" : "declined";
-
   try {
-    // 1️⃣ Update the invitation status
-    await pool.query(
-      `
-      UPDATE SponsorDriverLink
-      SET status = :newStatus
-      WHERE sponsor_username = :sponsor_username AND driver_username = :driver_username
-      `,
-      {
-        replacements: { newStatus, sponsor_username, driver_username },
-      }
-    );
-
-    console.log(
-      `✅ Driver '${driver_username}' ${newStatus} invite from '${sponsor_username}'`
-    );
-
-    // 2️⃣ If accepted, return driver info for sponsor’s roster
-    let driver = null;
-    if (newStatus === "accepted") {
-      const [rows] = await pool.query(
-        `
-        SELECT u.username, u.email, :newStatus AS status
-        FROM users u
-        WHERE u.username = :driver_username
-        `,
-        { replacements: { driver_username, newStatus } }
-      );
-      driver = rows?.[0] || null;
+    const invite = await SponsorDriverLink.findOne({
+      where: { sponsor_username, driver_username, status: "pending" },
+    });
+    if (!invite) {
+      return res.status(404).json({ error: "Invitation not found or already handled" });
     }
-
-    res.json({
-      success: true,
-      message: `Invite ${newStatus}`,
-      driver,
-    });
+    invite.status = accept ? "accepted" : "declined";
+    await invite.save();
+    res.json({ message: `Invitation ${invite.status}` });
   } catch (err) {
-    console.error("❌ Error updating invite status:", err.message);
-    res.status(500).json({ error: "Database error while updating status" });
+    res.status(500).json({ error: "Failed to respond to invitation" });
   }
 });
-
-/**
- * GET /api/sponsor/invited-drivers/:sponsor_username
- * Sponsor views all drivers they’ve invited (pending + accepted)
- */
-router.get("/api/sponsor/invited-drivers/:sponsor_username", async (req, res) => {
-  const { sponsor_username } = req.params;
-
-  try {
-    const [rows] = await pool.query(
-      `
-      SELECT u.username AS driver_username, u.email AS driver_email, l.status
-      FROM SponsorDriverLink l
-      JOIN users u ON u.username = l.driver_username
-      WHERE l.sponsor_username = :sponsor_username
-      `,
-      { replacements: { sponsor_username } }
-    );
-
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ Error fetching sponsor invited drivers:", err.message);
-    console.error("➡️ SQL Error Details:", err.sqlMessage || err);
-    res.status(500).json({ error: "Failed to fetch invited drivers" });
-  }
-});
-
-/**
- * GET /api/sponsor/drivers/:sponsor_username
- * Sponsor roster (only accepted drivers)
- */
-router.get("/api/sponsor/drivers/:sponsor_username", async (req, res) => {
-  const { sponsor_username } = req.params;
-
-  try {
-    const [rows] = await pool.query(
-      `
-      SELECT u.username, u.email, l.status
-      FROM SponsorDriverLink l
-      JOIN users u ON u.username = l.driver_username
-      WHERE l.sponsor_username = :sponsor_username
-      AND l.status = 'accepted'
-      `,
-      { replacements: { sponsor_username } }
-    );
-
-    res.json({ drivers: rows });
-  } catch (err) {
-    console.error("❌ Error fetching sponsor drivers:", err.message);
-    res.status(500).json({ error: "Failed to fetch drivers" });
-  }
-});
-
-/**
- * DELETE /api/sponsor/remove-driver
- * Sponsor removes a driver from their roster
- */
-router.delete("/api/sponsor/remove-driver", async (req, res) => {
-  const { sponsor_username, driver_username } = req.body;
-
-  if (!sponsor_username || !driver_username)
-    return res.status(400).json({ error: "Missing usernames" });
-
-  try {
-    const [result] = await pool.query(
-      `
-      DELETE FROM SponsorDriverLink
-      WHERE sponsor_username = :sponsor_username AND driver_username = :driver_username
-      `,
-      { replacements: { sponsor_username, driver_username } }
-    );
-
-    if (result.affectedRows === 0)
-      return res.status(404).json({ error: "Driver not found or already removed" });
-
-    console.log(`🗑️ Sponsor '${sponsor_username}' removed driver '${driver_username}'`);
-    res.json({ success: true, message: "Driver removed successfully" });
-  } catch (err) {
-    console.error("❌ Error removing driver:", err.message);
-    res.status(500).json({ error: "Database error while removing driver" });
-  }
-});
-
-/**
- * GET /api/drivers
- * Returns all users who have the role 'driver'
- */
-router.get("/api/drivers", async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      `
-      SELECT username, email
-      FROM users
-      WHERE role = 'driver'
-      ORDER BY username ASC
-      `
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ Error fetching drivers:", err.message);
-    res.status(500).json({ error: "Failed to fetch drivers" });
-  }
-});
-
-/**
- * GET /api/available-drivers/:sponsor_username
- * Returns all drivers not already invited or linked to the sponsor
- */
-router.get("/api/available-drivers/:sponsor_username", async (req, res) => {
-  const { sponsor_username } = req.params;
-
-  if (!sponsor_username)
-    return res.status(400).json({ error: "Missing sponsor username" });
-
-  try {
-    const sql = `
-      SELECT u.username, u.email
-      FROM users u
-      LEFT JOIN SponsorDriverLink l
-        ON u.username = l.driver_username
-        AND l.sponsor_username = '${sponsor_username}'
-      WHERE u.role = 'driver'
-        AND (l.driver_username IS NULL OR l.status IN ('declined'))
-      ORDER BY u.username ASC;
-    `;
-
-    const [rows] = await pool.query(sql);
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ Error fetching available drivers:", err);
-    res.status(500).json({
-      error: "Failed to fetch available drivers",
-      details: err.message,
-    });
-  }
-});
-
-
-
-
-
 
 export default router;
