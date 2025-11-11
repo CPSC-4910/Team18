@@ -1,12 +1,9 @@
-// App/backend/src/routes/organizations.js
+// App/backend/src/routes/organizations.js - UPDATED
 import express from "express";
 import Organization from "../models/Organization.js";
 import User from "../models/User.js";
 import SponsorOrganizationLink from "../models/SponsorOrganizationLink.js";
 import OrganizationCatalog from "../models/OrganizationCatalog.js";
-import sequelize from "../config/database.js";
-
-
 
 const router = express.Router();
 
@@ -24,25 +21,20 @@ router.post("/", async (req, res) => {
     if (user.role !== "sponsor")
       return res.status(403).json({ error: "Only sponsors can create organizations." });
 
-    // Prevent duplicate names
     const existing = await Organization.findOne({ where: { name } });
     if (existing)
       return res.status(400).json({ error: "Organization name already exists." });
 
-    // Create org
     const org = await Organization.create({ name, created_by: username });
 
-    // Link the sponsor as the owner
     await SponsorOrganizationLink.create({
-    sponsor_username: username,
-    organization_id: org.id,
-    role: "owner",
+      sponsor_username: username,
+      organization_id: org.id,
+      role: "owner",
+      is_active: true,
     });
-    
-    user.organization_id = org.id;
-    await user.save();
 
-    console.log(`[ORG CREATE] ${username} linked to org ${org.name}`);
+    console.log(`[ORG CREATE] ${username} created and linked to org ${org.name}`);
     return res.status(201).json({ message: "Organization created.", organization: org });
   } catch (err) {
     console.error("[ORG CREATE] error:", err);
@@ -50,7 +42,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Fetch org by user
+// Get org by user
 router.get("/by-user/:username", async (req, res) => {
   try {
     const { username } = req.params;
@@ -69,8 +61,7 @@ router.get("/by-user/:username", async (req, res) => {
   }
 });
 
-// GET /api/organizations/by-creator/:username
-// Returns all organizations created by this sponsor
+// Get all organizations by creator
 router.get("/by-creator/:username", async (req, res) => {
   try {
     const { username } = req.params;
@@ -87,7 +78,7 @@ router.get("/by-creator/:username", async (req, res) => {
   }
 });
 
-// GET /api/organizations/all — return all organizations for dropdown selection
+// Get all organizations
 router.get("/all", async (req, res) => {
   try {
     const orgs = await Organization.findAll({
@@ -101,35 +92,32 @@ router.get("/all", async (req, res) => {
   }
 });
 
-
-// GET /api/organizations/by-sponsor/:username
+// Get organizations by sponsor
 router.get("/by-sponsor/:username", async (req, res) => {
   try {
     const { username } = req.params;
 
-    // Find all organizations linked to this sponsor
     const links = await SponsorOrganizationLink.findAll({
       where: { sponsor_username: username },
       include: [
         {
           model: Organization,
+          as: "organization",
           attributes: ["id", "name", "status", "created_at"],
         },
       ],
-      order: [["is_active", "DESC"], ["joined_at", "ASC"]], // active first, then oldest join
+      order: [["is_active", "DESC"], ["joined_at", "ASC"]],
     });
 
-    // If no orgs found
     if (!links.length) {
       return res.json([]);
     }
 
-    // Extract clean organization list
     const orgs = links.map((l) => ({
-      id: l.Organization.id,
-      name: l.Organization.name,
-      status: l.Organization.status,
-      created_at: l.Organization.created_at,
+      id: l.organization.id,
+      name: l.organization.name,
+      status: l.organization.status,
+      created_at: l.organization.created_at,
       is_active: l.is_active,
     }));
 
@@ -141,8 +129,7 @@ router.get("/by-sponsor/:username", async (req, res) => {
   }
 });
 
-
-// PATCH /api/organizations/set-active
+// Set active organization
 router.patch("/set-active", async (req, res) => {
   try {
     const { username, organization_id } = req.body;
@@ -150,12 +137,10 @@ router.patch("/set-active", async (req, res) => {
       return res.status(400).json({ error: "Missing username or organization_id" });
     }
 
-    // Check if sponsor already linked
     let link = await SponsorOrganizationLink.findOne({
       where: { sponsor_username: username, organization_id },
     });
 
-    // If not linked yet, create link automatically
     if (!link) {
       link = await SponsorOrganizationLink.create({
         sponsor_username: username,
@@ -166,13 +151,11 @@ router.patch("/set-active", async (req, res) => {
       console.log(`[ORG LINK CREATED] ${username} → org ${organization_id}`);
     }
 
-    // Deactivate all orgs for this sponsor
     await SponsorOrganizationLink.update(
       { is_active: false },
       { where: { sponsor_username: username } }
     );
 
-    // Activate chosen one
     await SponsorOrganizationLink.update(
       { is_active: true },
       { where: { sponsor_username: username, organization_id } }
@@ -186,36 +169,66 @@ router.patch("/set-active", async (req, res) => {
   }
 });
 
-
-// POST /api/organizations/catalog/add
+// ✅ FIXED: Add item to catalog
 router.post("/catalog/add", async (req, res) => {
   try {
-    const { organization_id, sponsor_username, item } = req.body;
+    const { organization_id, sponsor_username, item, points_cost } = req.body;
 
-    if (!organization_id || !sponsor_username || !item?.itemId) {
-      return res.status(400).json({ error: "Missing required fields." });
+    console.log("[CATALOG ADD] Request body:", JSON.stringify(req.body, null, 2));
+
+    if (!organization_id || !sponsor_username || !item) {
+      console.log("[CATALOG ADD] Missing fields");
+      return res.status(400).json({ error: "Missing required fields: organization_id, sponsor_username, or item" });
     }
 
-    const newItem = await OrganizationCatalog.create({
-      organization_id,
-      sponsor_username,
-      item_id: item.itemId,
-      title: item.title,
-      price: item.price?.value,
-      currency: item.price?.currency,
-      image_url: item.image?.imageUrl,
-      item_url: item.itemWebUrl,
+    if (!item.itemId) {
+      console.log("[CATALOG ADD] Missing itemId");
+      return res.status(400).json({ error: "Item must have an itemId" });
+    }
+
+    // Check if item already exists
+    const existing = await OrganizationCatalog.findOne({
+      where: { 
+        organization_id, 
+        item_id: item.itemId 
+      }
     });
 
-    res.json({ message: "Item added to catalog.", newItem });
+    if (existing) {
+      console.log("[CATALOG ADD] Item already exists:", item.itemId);
+      return res.status(409).json({ error: "Item already in catalog" });
+    }
+
+    // Create the catalog item
+    const newItem = await OrganizationCatalog.create({
+      organization_id: parseInt(organization_id),
+      sponsor_username,
+      item_id: item.itemId,
+      title: item.title || "Untitled Item",
+      price: parseFloat(item.price?.value) || 0,
+      currency: item.price?.currency || "USD",
+      image_url: item.image?.imageUrl || "",
+      item_url: item.itemWebUrl || "",
+      points_cost: parseInt(points_cost) || 0,
+      stock_status: "available",
+    });
+
+    console.log("[CATALOG ADD] Success! Created item:", newItem.id);
+    res.json({ 
+      message: "Item added to catalog successfully", 
+      item: newItem 
+    });
   } catch (err) {
-    console.error("[ORG CATALOG ADD] Error:", err);
-    res.status(500).json({ error: "Failed to add item to catalog." });
+    console.error("[CATALOG ADD] Error:", err);
+    console.error("[CATALOG ADD] Error stack:", err.stack);
+    res.status(500).json({ 
+      error: "Failed to add item to catalog",
+      details: err.message 
+    });
   }
 });
 
-
-// GET /api/organizations/catalog/:organization_id
+// Get catalog items
 router.get("/catalog/:organization_id", async (req, res) => {
   try {
     const { organization_id } = req.params;
@@ -225,25 +238,51 @@ router.get("/catalog/:organization_id", async (req, res) => {
     });
     res.json(items);
   } catch (err) {
-    console.error("[ORG CATALOG GET] Error:", err);
-    res.status(500).json({ error: "Failed to load organization catalog." });
+    console.error("[CATALOG GET] Error:", err);
+    res.status(500).json({ error: "Failed to load organization catalog" });
   }
 });
 
-// DELETE /api/organizations/catalog/:id
+// Update catalog item points cost
+router.patch("/catalog/:id/points", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { points_cost } = req.body;
+
+    if (points_cost === undefined || points_cost < 0) {
+      return res.status(400).json({ error: "Invalid points cost" });
+    }
+
+    const item = await OrganizationCatalog.findByPk(id);
+    if (!item) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    item.points_cost = points_cost;
+    await item.save();
+
+    res.json({ message: "Points cost updated", item });
+  } catch (err) {
+    console.error("[CATALOG UPDATE POINTS] Error:", err);
+    res.status(500).json({ error: "Failed to update points cost" });
+  }
+});
+
+// Delete catalog item
 router.delete("/catalog/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    await OrganizationCatalog.destroy({ where: { id } });
-    res.json({ message: "Item removed from catalog." });
+    const deleted = await OrganizationCatalog.destroy({ where: { id } });
+    
+    if (deleted === 0) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+    
+    res.json({ message: "Item removed from catalog" });
   } catch (err) {
-    console.error("[ORG CATALOG DELETE] Error:", err);
-    res.status(500).json({ error: "Failed to remove item from catalog." });
+    console.error("[CATALOG DELETE] Error:", err);
+    res.status(500).json({ error: "Failed to remove item from catalog" });
   }
 });
-
-
-
-
 
 export default router;
