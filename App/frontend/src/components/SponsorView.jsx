@@ -1,7 +1,7 @@
 // App/frontend/src/components/SponsorView.jsx - UPDATED with Points Display
 import React, { useEffect, useState } from "react";
 import { Award, Package, Users, TrendingUp, UserPlus, Coins } from "lucide-react";
-import EbayApiTest from "./EbayApiTest";
+
 
 // Invite Drivers Component
 function InviteDriversView({ profile, setView }) {
@@ -587,8 +587,8 @@ export default function SponsorView({ user, onLogout }) {
           ← Back to Dashboard
         </button>
       </header>
+
       
-      <EbayApiTest />
 
       <section className="panel">
         <h2>Search eBay Products</h2>
