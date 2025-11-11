@@ -10,8 +10,21 @@ const OrganizationCatalog = sequelize.define("OrganizationCatalog", {
   title: { type: DataTypes.STRING(255) },
   price: { type: DataTypes.DECIMAL(10, 2) },
   currency: { type: DataTypes.STRING(10) },
-  image_url: { type: DataTypes.STRING(255) },
-  item_url: { type: DataTypes.STRING(255) },
+  image_url: { type: DataTypes.STRING(500) }, // Increased length
+  item_url: { type: DataTypes.STRING(500) }, // Increased length
+  points_cost: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
+  
+  // ▼▼▼ NEW FIELD ▼▼▼
+  stock_status: {
+    type: DataTypes.ENUM('available', 'out_of_stock', 'discontinued'),
+    defaultValue: 'available'
+  },
+  // ▲▲▲ NEW FIELD ▲▲▲
+
 }, {
   tableName: "OrganizationCatalog",
   timestamps: true,
@@ -19,7 +32,6 @@ const OrganizationCatalog = sequelize.define("OrganizationCatalog", {
   updatedAt: false,
 });
 
-// Association
 Organization.hasMany(OrganizationCatalog, { foreignKey: "organization_id" });
 OrganizationCatalog.belongsTo(Organization, { foreignKey: "organization_id" });
 
