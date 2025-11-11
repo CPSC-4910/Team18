@@ -90,6 +90,46 @@ router.patch("/catalog/:itemId/points", async (req, res) => {
   }
 });
 
+router.patch("/set-active/:orgId", async (req, res) => {
+  try {
+    const { sponsor_username } = req.body;
+    const { orgId } = req.params;
+
+    if (!sponsor_username) {
+      return res.status(400).json({ error: "sponsor_username is required" });
+    }
+
+    // First, deactivate all organizations for this sponsor
+    await SponsorOrganizationLink.update(
+      { is_active: false },
+      { where: { sponsor_username } }
+    );
+
+    // Then activate the selected one
+    const [updatedRows] = await SponsorOrganizationLink.update(
+      { is_active: true },
+      { 
+        where: { 
+          sponsor_username,
+          organization_id: orgId 
+        } 
+      }
+    );
+
+    if (updatedRows === 0) {
+      return res.status(404).json({ 
+        error: "Organization link not found for this sponsor" 
+      });
+    }
+
+    res.json({ message: "Active organization updated successfully" });
+  } catch (err) {
+    console.error("Error setting active organization:", err);
+    res.status(500).json({ error: "Failed to set active organization" });
+  }
+});
+
+
 // DELETE remove an item from a catalog
 router.delete("/catalog/:itemId", async (req, res) => {
   try {

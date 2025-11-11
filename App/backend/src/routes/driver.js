@@ -16,42 +16,72 @@ router.get("/my-organization/:username", async (req, res) => {
         driver_username: req.params.username,
         status: "accepted" 
       },
-      // We only need one for this logic, but you could expand this
-      order: [["updated_at", "DESC"]] 
+      order: [["id", "DESC"]] // Get most recent accepted link
     });
 
     if (!link) {
       return res.status(404).json({ error: "No accepted sponsor link found" });
     }
 
-    // 2. Find the organization linked to that sponsor
+    // 2. Find the sponsor's ACTIVE organization
     const orgLink = await SponsorOrganizationLink.findOne({
-        where: { sponsor_username: link.sponsor_username }
-        // Again, assuming one org per sponsor for now
+      where: { 
+        sponsor_username: link.sponsor_username,
+        is_active: true  //only get active org
+      }
     });
 
     if (!orgLink) {
-        return res.status(404).json({ error: "Sponsor is not linked to an organization" });
+      // If no active org, try to get ANY org the sponsor is part of
+      const anyOrgLink = await SponsorOrganizationLink.findOne({
+        where: { sponsor_username: link.sponsor_username }
+      });
+      
+      if (!anyOrgLink) {
+        return res.status(404).json({ 
+          error: "Your sponsor is not linked to any organization yet. Please contact your sponsor." 
+        });
+      }
+      
+      // Use the first available org if no active one is set
+      const org = await Organization.findByPk(anyOrgLink.organization_id);
+      if (!org) {
+        return res.status(404).json({ error: "Organization not found" });
+      }
+
+      // Get driver's points for that org
+      const balance = await PointsBalance.findOne({
+        where: {
+          driver_username: req.params.username,
+          organization_id: org.id
+        }
+      });
+
+      return res.json({
+        organization: org,
+        points: balance ? balance.balance : 0,
+        warning: "This organization is not marked as active by your sponsor"
+      });
     }
     
     // 3. Get the organization details
     const org = await Organization.findByPk(orgLink.organization_id);
 
     if (!org) {
-        return res.status(404).json({ error: "Organization not found" });
+      return res.status(404).json({ error: "Organization not found" });
     }
 
     // 4. Get the driver's points for that org
     const balance = await PointsBalance.findOne({
-        where: {
-            driver_username: req.params.username,
-            organization_id: org.id
-        }
+      where: {
+        driver_username: req.params.username,
+        organization_id: org.id
+      }
     });
 
     res.json({
-        organization: org,
-        points: balance ? balance.balance : 0
+      organization: org,
+      points: balance ? balance.balance : 0
     });
 
   } catch (err) {

@@ -439,12 +439,21 @@ export default function SponsorView({ user, onLogout }) {
           {organizations.length > 0 ? (
             <select
               value={activeOrg?.id || ""}
-              onChange={(e) => {
+              onChange={async (e) => {
                 const org = organizations.find((o) => o.id === parseInt(e.target.value));
                 setActiveOrg(org);
                 if (org) {
+                  try {
+                    await fetch(`/api/organizations/set-active/${org.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sponsor_username: profile.name })
+                  });
                   loadMyCatalog(org.id);
                   loadDriverPoints(org.id);
+                  } catch (err) {
+                    console.error("Failed to set active organization:", err);
+                  }
                 }
               }}
               className="input"
