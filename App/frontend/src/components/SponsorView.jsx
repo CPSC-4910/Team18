@@ -1,6 +1,7 @@
-// App/frontend/src/components/SponsorView.jsx - UPDATED
+// App/frontend/src/components/SponsorView.jsx - UPDATED with Points Display
 import React, { useEffect, useState } from "react";
-import { Award, Package, Users, TrendingUp, UserPlus } from "lucide-react";
+import { Award, Package, Users, TrendingUp, UserPlus, Coins } from "lucide-react";
+import EbayApiTest from "./EbayApiTest";
 
 // Invite Drivers Component
 function InviteDriversView({ profile, setView }) {
@@ -15,14 +16,12 @@ function InviteDriversView({ profile, setView }) {
   async function loadDrivers() {
     setLoading(true);
     try {
-      // Get available drivers
       const availRes = await fetch(`/api/available-drivers/${profile.name}`);
       if (availRes.ok) {
         const availData = await availRes.json();
         setAvailableDrivers(availData);
       }
 
-      // Get already invited drivers
       const invitedRes = await fetch(`/api/sponsor/invited-drivers/${profile.name}`);
       if (invitedRes.ok) {
         const invitedData = await invitedRes.json();
@@ -95,7 +94,6 @@ function InviteDriversView({ profile, setView }) {
 
       {loading && <div className="panel">Loading drivers...</div>}
 
-      {/* Available Drivers to Invite */}
       <section className="panel">
         <h2>Available Drivers</h2>
         {availableDrivers.length === 0 ? (
@@ -129,7 +127,6 @@ function InviteDriversView({ profile, setView }) {
         )}
       </section>
 
-      {/* Invited/Connected Drivers */}
       <section className="panel">
         <h2>Your Drivers</h2>
         {invitedDrivers.length === 0 ? (
@@ -173,6 +170,7 @@ function InviteDriversView({ profile, setView }) {
 export default function SponsorView({ user, onLogout }) {
   const [profile, setProfile] = useState(null);
   const [drivers, setDrivers] = useState([]);
+  const [driverPoints, setDriverPoints] = useState({});
   const [organizations, setOrganizations] = useState([]);
   const [activeOrg, setActiveOrg] = useState(null);
   const [view, setView] = useState("dashboard");
@@ -182,13 +180,11 @@ export default function SponsorView({ user, onLogout }) {
   const [searchTerm, setSearchTerm] = useState("truck parts");
   const [error, setError] = useState("");
   
-  // Points management
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [pointsToAward, setPointsToAward] = useState("");
   const [pointsReason, setPointsReason] = useState("");
   const [awardingPoints, setAwardingPoints] = useState(false);
   
-  // Catalog item points
   const [editingItemId, setEditingItemId] = useState(null);
   const [tempPointsCost, setTempPointsCost] = useState("");
 
@@ -199,19 +195,20 @@ export default function SponsorView({ user, onLogout }) {
         const me = { name: user?.username };
         setProfile(me);
 
-        // Load drivers
         const driverRes = await fetch(`/api/sponsor/drivers/${me.name}`);
         const driverData = driverRes.ok ? await driverRes.json() : { drivers: [] };
         setDrivers(driverData.drivers);
 
-        // Load organizations
         const orgRes = await fetch(`/api/organizations/by-sponsor/${me.name}`);
         if (orgRes.ok) {
           const orgData = await orgRes.json();
           setOrganizations(orgData);
           const active = orgData.find((o) => o.is_active) || orgData[0];
           setActiveOrg(active);
-          if (active) loadMyCatalog(active.id);
+          if (active) {
+            loadMyCatalog(active.id);
+            loadDriverPoints(active.id);
+          }
         }
       } catch (err) {
         console.error("Error loading sponsor data:", err);
@@ -221,14 +218,48 @@ export default function SponsorView({ user, onLogout }) {
     load();
   }, [user?.username]);
 
+  async function loadDriverPoints(orgId) {
+    if (!orgId) return;
+    
+    try {
+      const res = await fetch(`/api/points/balances/${orgId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const pointsMap = {};
+        data.forEach(balance => {
+          pointsMap[balance.driver_username] = balance.balance;
+        });
+        setDriverPoints(pointsMap);
+      }
+    } catch (err) {
+      console.error("Failed to load driver points:", err);
+    }
+  }
+
   async function loadEbayCatalog(query) {
     setLoadingCatalog(true);
+    setError("");
     try {
+      console.log("Searching eBay for:", query);
       const res = await fetch(`/api/ebay/catalog?q=${encodeURIComponent(query)}`);
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to fetch eBay catalog");
+      }
+      
       const data = await res.json();
-      setCatalog(data);
+      console.log("eBay results:", data.length, "items");
+      
+      if (Array.isArray(data) && data.length === 0) {
+        setError("No results found. Try a different search term.");
+      }
+      
+      setCatalog(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Failed to load eBay catalog:", err);
+      setError(`eBay search failed: ${err.message}`);
+      setCatalog([]);
     } finally {
       setLoadingCatalog(false);
     }
@@ -258,13 +289,6 @@ export default function SponsorView({ user, onLogout }) {
       return;
     }
 
-    console.log("Adding to catalog:", { 
-      organization_id: activeOrg.id, 
-      sponsor_username: profile.name, 
-      item, 
-      points_cost: points 
-    });
-
     try {
       const res = await fetch("/api/organizations/catalog/add", {
         method: "POST",
@@ -284,7 +308,6 @@ export default function SponsorView({ user, onLogout }) {
       });
 
       const data = await res.json();
-      console.log("Add to catalog response:", data);
 
       if (res.ok) {
         alert(`✅ Added "${item.title}" to your catalog with ${points} points cost`);
@@ -352,14 +375,6 @@ export default function SponsorView({ user, onLogout }) {
       return;
     }
 
-    console.log("Awarding points:", {
-      driver_username: selectedDriver,
-      sponsor_username: profile.name,
-      organization_id: activeOrg.id,
-      points,
-      reason: pointsReason || "Points awarded by sponsor"
-    });
-
     setAwardingPoints(true);
     try {
       const res = await fetch("/api/points/award", {
@@ -375,13 +390,13 @@ export default function SponsorView({ user, onLogout }) {
       });
 
       const data = await res.json();
-      console.log("Award points response:", data);
 
       if (res.ok) {
         alert(`✅ Awarded ${points} points to ${selectedDriver}! New balance: ${data.newBalance}`);
         setPointsToAward("");
         setPointsReason("");
         setSelectedDriver(null);
+        loadDriverPoints(activeOrg.id);
       } else {
         console.error("Failed to award points:", data);
         alert(`❌ ${data.error || "Failed to award points"}`);
@@ -419,7 +434,6 @@ export default function SponsorView({ user, onLogout }) {
 
         {error && <div className="error">{error}</div>}
 
-        {/* Organization Selector */}
         <section className="panel">
           <h2><Package className="icon-inline" /> Active Organization</h2>
           {organizations.length > 0 ? (
@@ -428,7 +442,10 @@ export default function SponsorView({ user, onLogout }) {
               onChange={(e) => {
                 const org = organizations.find((o) => o.id === parseInt(e.target.value));
                 setActiveOrg(org);
-                if (org) loadMyCatalog(org.id);
+                if (org) {
+                  loadMyCatalog(org.id);
+                  loadDriverPoints(org.id);
+                }
               }}
               className="input"
             >
@@ -443,15 +460,15 @@ export default function SponsorView({ user, onLogout }) {
           )}
         </section>
 
-        {/* Driver Roster */}
         <section className="panel">
-          <h2><Users className="icon-inline" /> Driver Roster</h2>
+          <h2><Users className="icon-inline" /> Driver Roster with Points</h2>
           <table className="table">
             <thead>
               <tr>
                 <th>Username</th>
                 <th>Email</th>
                 <th>Status</th>
+                <th><Coins className="icon-inline" /> Points Balance</th>
               </tr>
             </thead>
             <tbody>
@@ -461,11 +478,14 @@ export default function SponsorView({ user, onLogout }) {
                     <td>{d.username}</td>
                     <td>{d.email}</td>
                     <td><span className="badge">{d.status}</span></td>
+                    <td className="points-cell">
+                      <strong>{driverPoints[d.username] !== undefined ? driverPoints[d.username] : 0}</strong> points
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="3" className="muted center">No drivers yet. Click "Invite Drivers" to get started.</td>
+                  <td colSpan="4" className="muted center">No drivers yet. Click "Invite Drivers" to get started.</td>
                 </tr>
               )}
             </tbody>
@@ -477,12 +497,10 @@ export default function SponsorView({ user, onLogout }) {
     );
   }
 
-  // === INVITE DRIVERS VIEW ===
   if (view === "invite") {
     return <InviteDriversView profile={profile} setView={setView} />;
   }
 
-  // === POINTS MANAGEMENT VIEW ===
   if (view === "points") {
     return (
       <div className="sponsor-view">
@@ -514,7 +532,7 @@ export default function SponsorView({ user, onLogout }) {
                 <option value="">-- Select Driver --</option>
                 {drivers.filter(d => d.status === 'accepted').map((d) => (
                   <option key={d.username} value={d.username}>
-                    {d.username} ({d.email})
+                    {d.username} ({d.email}) - Current: {driverPoints[d.username] || 0} pts
                   </option>
                 ))}
               </select>
@@ -561,7 +579,6 @@ export default function SponsorView({ user, onLogout }) {
     );
   }
 
-  // === CATALOG MANAGEMENT VIEW ===
   return (
     <div className="sponsor-view">
       <header className="sv-header">
@@ -570,8 +587,9 @@ export default function SponsorView({ user, onLogout }) {
           ← Back to Dashboard
         </button>
       </header>
+      
+      <EbayApiTest />
 
-      {/* Search eBay */}
       <section className="panel">
         <h2>Search eBay Products</h2>
         <div className="search-bar">
@@ -614,7 +632,6 @@ export default function SponsorView({ user, onLogout }) {
         </div>
       </section>
 
-      {/* My Organization Catalog */}
       <section className="panel">
         <h2>My Organization Catalog</h2>
         <p className="muted">Items in <strong>{activeOrg?.name}</strong> catalog</p>
@@ -697,7 +714,7 @@ const css = `
 .sv-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
 .sv-header h1 { margin: 0; display: flex; align-items: center; gap: 8px; }
 .org-badge { background: #e3f2fd; color: #1976d2; padding: 4px 12px; border-radius: 16px; font-weight: 600; }
-.header-actions { display: flex; gap: 8px; }
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .panel { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
 .panel h2 { margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
@@ -720,6 +737,7 @@ const css = `
 .btn-sm { padding: 6px 12px; font-size: 13px; }
 .btn-xs { padding: 4px 8px; font-size: 12px; }
 .btn-icon { background: none; border: none; cursor: pointer; font-size: 16px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .icon { width: 20px; height: 20px; }
 .icon-inline { width: 22px; height: 22px; vertical-align: middle; }
@@ -731,7 +749,7 @@ const css = `
 .catalog-card { border: 1px solid #e0e0e0; border-radius: 12px; padding: 12px; transition: transform 0.2s, box-shadow 0.2s; }
 .catalog-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 .catalog-card img { width: 100%; height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; }
-.catalog-card h3 { font-size: 14px; margin: 8px 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.catalog-card h3 { font-size: 14px; margin: 8px 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-height: 40px; }
 .catalog-card .price { font-weight: 600; color: #1976d2; margin: 4px 0; }
 .catalog-card .link { color: #1976d2; font-size: 13px; display: block; margin: 8px 0; }
 
@@ -746,7 +764,10 @@ const css = `
 .table { width: 100%; border-collapse: collapse; margin-top: 12px; }
 .table th, .table td { padding: 12px; border-bottom: 1px solid #e0e0e0; text-align: left; }
 .table th { background: #f5f5f5; font-weight: 600; }
+.points-cell { font-family: monospace; color: #0a8f3d; }
 .badge { background: #4caf50; color: white; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.badge.pending { background: #ff9800; }
+.badge.declined { background: #f44336; }
 
 .muted { color: #757575; }
 .muted.small { font-size: 12px; margin-top: 4px; }

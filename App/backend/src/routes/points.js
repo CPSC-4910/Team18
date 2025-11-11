@@ -7,6 +7,21 @@ import OrganizationCatalog from "../models/OrganizationCatalog.js";
 
 const router = express.Router();
 
+// GET /api/points/balances/:orgId - Get all driver balances for an organization
+router.get("/balances/:orgId", async (req, res) => {
+  try {
+    const balances = await PointsBalance.findAll({
+      where: { organization_id: req.params.orgId },
+      order: [["driver_username", "ASC"]]
+    });
+    
+    res.json(balances);
+  } catch (err) {
+    console.error("Error fetching balances:", err);
+    res.status(500).json({ error: "Failed to fetch points balances" });
+  }
+});
+
 // POST /api/points/award - Sponsor awards points to driver
 router.post("/award", async (req, res) => {
   const {
@@ -57,7 +72,6 @@ router.post("/award", async (req, res) => {
 
 // POST /api/points/redeem - Driver redeems an item
 router.post("/redeem", async (req, res) => {
-  // In a real app, you'd get driver_username from a secure session (req.user)
   const { driver_username, itemId, organization_id } = req.body;
 
   const t = await sequelize.transaction();
