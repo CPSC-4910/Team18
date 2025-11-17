@@ -1,6 +1,4 @@
 // App/frontend/src/components/DriverView.jsx
-// WITH ACCOUNT MANAGEMENT + Application History tab (Option A)
-// "My Applications" moved into a new "Application History" tab (left of Account)
 
 import React, { useEffect, useState } from "react";
 import { Users, User, Lock, Archive } from "lucide-react";
