@@ -1,6 +1,7 @@
 // App/backend/src/models/DriverOrganizationLink.js
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
+import Organization from "./Organization.js";
 
 const DriverOrganizationLink = sequelize.define(
   "DriverOrganizationLink",
@@ -19,5 +20,15 @@ const DriverOrganizationLink = sequelize.define(
     indexes: [{ unique: true, fields: ["driver_username", "organization_id"] }],
   }
 );
+
+//ADD ASSOCIATIONS
+DriverOrganizationLink.belongsTo(Organization, {
+  foreignKey: "organization_id",
+  as: "Organization"
+});
+
+Organization.hasMany(DriverOrganizationLink, {
+  foreignKey: "organization_id"
+});
 
 export default DriverOrganizationLink;

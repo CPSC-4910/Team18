@@ -1,5 +1,7 @@
+// App/backend/src/routes/memberships.js
 import express from "express";
 import DriverOrganizationLink from "../models/DriverOrganizationLink.js";
+import Organization from "../models/Organization.js";
 import User from "../models/User.js";
 import PointsBalance from "../models/PointsBalance.js";
 
@@ -36,6 +38,37 @@ router.get("/by-org/:orgId", async (req, res) => {
   } catch (err) {
     console.error("Error loading memberships:", err);
     res.status(500).json({ error: "Server error loading members" });
+  }
+});
+
+// ✅ NEW ROUTE: GET MEMBERSHIPS BY DRIVER USERNAME
+router.get("/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    // Get all organizations this driver is a member of
+    const links = await DriverOrganizationLink.findAll({
+      where: { driver_username: username },
+      include: [
+        { 
+          model: Organization,
+          as: "Organization",  // ✅ FIXED: Added the alias
+          attributes: ["id", "name", "status", "created_at"]
+        }
+      ],
+    });
+
+    // Format the response
+    const memberships = links.map(link => ({
+      organization_id: link.organization_id,
+      organization_name: link.Organization?.name || "Unknown",
+      joined_at: link.joined_at
+    }));
+
+    res.json(memberships);
+  } catch (err) {
+    console.error("Error loading driver memberships:", err);
+    res.status(500).json({ error: "Server error loading memberships" });
   }
 });
 
