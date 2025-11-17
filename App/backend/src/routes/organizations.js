@@ -144,4 +144,20 @@ router.delete("/catalog/:itemId", async (req, res) => {
   }
 });
 
+// GET all organizations (for driver application page)
+router.get("/all", async (req, res) => {
+  try {
+    const orgs = await Organization.findAll({
+      attributes: ["id", "name", "created_by", "status", "created_at"],
+      order: [["name", "ASC"]],
+    });
+
+    res.json(orgs);
+  } catch (err) {
+    console.error("Error loading organizations:", err);
+    res.status(500).json({ error: "Failed to load organizations" });
+  }
+});
+
+
 export default router;
