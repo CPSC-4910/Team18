@@ -1,8 +1,9 @@
 // App/frontend/src/components/DriverView.jsx
-// WITH ACCOUNT MANAGEMENT
+// WITH ACCOUNT MANAGEMENT + Application History tab (Option A)
+// "My Applications" moved into a new "Application History" tab (left of Account)
 
 import React, { useEffect, useState } from "react";
-import { Users, User, Lock } from "lucide-react";
+import { Users, User, Lock, Archive } from "lucide-react";
 
 export default function DriverView({ user, onLogout }) {
   const [organizations, setOrganizations] = useState([]);
@@ -138,19 +139,37 @@ export default function DriverView({ user, onLogout }) {
   // VIEWS
   // ------------------------------------------------------------
 
+  // Account view (unchanged except for keeping the same styling/structure)
   if (view === "account") {
     return (
       <div className="driver-view">
         <header className="dv-header">
           <h1>Account Management</h1>
-          <button className="btn" onClick={() => setView("dashboard")}>
-            ← Back to Dashboard
-          </button>
+          <div className="header-actions">
+            {/* Application History button (to the left of Account) */}
+            <button
+              className="btn btn-secondary"
+              onClick={() => setView("history")}
+              title="Application History"
+            >
+              <Archive className="icon" /> Application History
+            </button>
+
+            <button className="btn" onClick={() => setView("dashboard")}>
+              ← Back to Dashboard
+            </button>
+
+            <button className="btn btn-logout" onClick={onLogout}>
+              Log Out
+            </button>
+          </div>
         </header>
 
         <section className="panel">
-          <h2><User className="icon" /> Personal Information</h2>
-          
+          <h2>
+            <User className="icon" /> Personal Information
+          </h2>
+
           <div className="account-section">
             <label className="label">Username</label>
             <input
@@ -197,14 +216,19 @@ export default function DriverView({ user, onLogout }) {
             <div>
               <strong>Need to change your password?</strong>
               <p style={{ margin: "4px 0 0 0", fontSize: "14px", color: "#666" }}>
-                Use the "Forgot password?" link on the login page to reset your password securely via email.
+                Use the "Forgot password?" link on the login page to reset your
+                password securely via email.
               </p>
             </div>
           </div>
         </section>
 
         {accountMessage && (
-          <div className={`message ${accountMessage.includes("✓") ? "success" : "error"}`}>
+          <div
+            className={`message ${
+              accountMessage.includes("✓") ? "success" : "error"
+            }`}
+          >
             {accountMessage}
           </div>
         )}
@@ -214,15 +238,96 @@ export default function DriverView({ user, onLogout }) {
     );
   }
 
-  // -------- DASHBOARD --------
+  // Application History view - new tab (left of Account)
+  if (view === "history") {
+    return (
+      <div className="driver-view">
+        <header className="dv-header">
+          <h1>Application History — {user.username}</h1>
+          <div className="header-actions">
+            <button
+              className="btn"
+              onClick={() => setView("dashboard")}
+              title="Back to Dashboard"
+            >
+              ← Dashboard
+            </button>
+
+            <button
+              className="btn btn-secondary"
+              onClick={() => setView("account")}
+              title="Account Management"
+            >
+              <User className="icon" /> Account
+            </button>
+
+            <button className="btn btn-logout" onClick={onLogout}>
+              Log Out
+            </button>
+          </div>
+        </header>
+
+        <section className="panel">
+          <h2>
+            <Archive className="icon" /> My Applications
+          </h2>
+
+          {apps.length === 0 ? (
+            <p className="muted">No applications yet.</p>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Organization ID</th>
+                  <th>Status</th>
+                  <th>Applied At</th>
+                </tr>
+              </thead>
+              <tbody>
+                {apps.map((app) => (
+                  <tr key={app.id}>
+                    <td>{app.organization_id}</td>
+                    <td>
+                      <span className={`status-badge ${app.status}`}>
+                        {app.status}
+                      </span>
+                    </td>
+                    <td>{new Date(app.applied_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        <style>{css}</style>
+      </div>
+    );
+  }
+
+  // -------- DASHBOARD (no Applications section here anymore) --------
   return (
     <div className="driver-view">
       <header className="dv-header">
         <h1>Driver Dashboard — {user.username}</h1>
         <div className="header-actions">
-          <button className="btn btn-secondary" onClick={() => setView("account")}>
+          {/* Application History button left of Account as requested */}
+          <button
+            className="btn btn-secondary"
+            onClick={() => setView("history")}
+            title="Application History"
+          >
+            <Archive className="icon" /> Application History
+          </button>
+
+          <button
+            className="btn btn-secondary"
+            onClick={() => setView("account")}
+            title="Account Management"
+          >
             <User className="icon" /> Account
           </button>
+
           <button className="btn btn-logout" onClick={onLogout}>
             Log Out
           </button>
@@ -254,39 +359,6 @@ export default function DriverView({ user, onLogout }) {
         </button>
 
         {submitMessage && <p className="message">{submitMessage}</p>}
-      </section>
-
-      {/* -------------------------------------------------- */}
-      {/* My Applications */}
-      {/* -------------------------------------------------- */}
-      <section className="panel">
-        <h2>My Applications</h2>
-        {apps.length === 0 ? (
-          <p className="muted">No applications yet.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Organization ID</th>
-                <th>Status</th>
-                <th>Applied At</th>
-              </tr>
-            </thead>
-            <tbody>
-              {apps.map((app) => (
-                <tr key={app.id}>
-                  <td>{app.organization_id}</td>
-                  <td>
-                    <span className={`status-badge ${app.status}`}>
-                      {app.status}
-                    </span>
-                  </td>
-                  <td>{new Date(app.applied_at).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </section>
 
       {/* -------------------------------------------------- */}
