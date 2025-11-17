@@ -302,14 +302,12 @@ export default function DriverView({ user, onLogout }) {
       </div>
     );
   }
-
-  // -------- DASHBOARD (no Applications section here anymore) --------
   return (
     <div className="driver-view">
       <header className="dv-header">
         <h1>Driver Dashboard — {user.username}</h1>
         <div className="header-actions">
-          {/* Application History button left of Account as requested */}
+          {}
           <button
             className="btn btn-secondary"
             onClick={() => setView("history")}
