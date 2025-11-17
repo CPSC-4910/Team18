@@ -279,5 +279,97 @@ router.delete("/users/:username", async (req, res) => {
 });
 
 
+// PATCH /api/users/update-email - Update user email
+router.patch("/api/users/update-email", async (req, res) => {
+  const { username, newEmail } = req.body;
+
+  if (!username || !newEmail) {
+    return res.status(400).json({ error: "Username and new email are required" });
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(newEmail)) {
+    return res.status(400).json({ error: "Invalid email format" });
+  }
+
+  try {
+    const user = await User.findOne({ where: { username } });
+    
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Check if email is already taken by another user
+    const emailExists = await User.findOne({
+      where: {
+        email: newEmail,
+        username: { [Op.ne]: username } // Not equal to current user
+      }
+    });
+
+    if (emailExists) {
+      return res.status(409).json({ error: "Email already in use" });
+    }
+
+    // Update email
+    await user.update({ email: newEmail });
+
+    res.json({
+      message: "Email updated successfully",
+      user: {
+        username: user.username,
+        email: user.email,
+        role: user.role
+      }
+    });
+
+  } catch (err) {
+    console.error("Update email error:", err);
+    res.status(500).json({ error: "Server error updating email" });
+  }
+});
+
+// PATCH /api/users/update-password - Update user password
+router.patch("/api/users/update-password", async (req, res) => {
+  const { username, currentPassword, newPassword } = req.body;
+
+  if (!username || !currentPassword || !newPassword) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: "New password must be at least 8 characters" });
+  }
+
+  try {
+    const user = await User.findOne({ where: { username } });
+    
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Verify current password
+    const match = await bcrypt.compare(currentPassword, user.password);
+    
+    if (!match) {
+      return res.status(401).json({ error: "Current password is incorrect" });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password
+    await user.update({ password: hashedPassword });
+
+    res.json({
+      message: "Password updated successfully"
+    });
+
+  } catch (err) {
+    console.error("Update password error:", err);
+    res.status(500).json({ error: "Server error updating password" });
+  }
+});
 
 export default router;

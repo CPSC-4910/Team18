@@ -1,5 +1,5 @@
 // App/frontend/src/components/SponsorView.jsx
-// CLEAN VERSION (NO INVITES) + MANAGE APPLICATIONS + POINTS + CATALOG + DRIVER POINTS TABLE
+// WITH ACCOUNT MANAGEMENT TAB
 
 import React, { useEffect, useState } from "react";
 import {
@@ -10,6 +10,8 @@ import {
   XCircle,
   CheckCircle,
   Mail,
+  User,
+  Lock,
 } from "lucide-react";
 
 export default function SponsorView({ user, onLogout }) {
@@ -36,6 +38,14 @@ export default function SponsorView({ user, onLogout }) {
   const [pointsReason, setPointsReason] = useState("");
   const [awardingPoints, setAwardingPoints] = useState(false);
 
+  // Account Management
+  const [editEmail, setEditEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [accountMessage, setAccountMessage] = useState("");
+  const [updatingAccount, setUpdatingAccount] = useState(false);
+
   // UI view
   const [view, setView] = useState("dashboard");
 
@@ -46,6 +56,7 @@ export default function SponsorView({ user, onLogout }) {
     async function load() {
       const me = { name: user.username };
       setProfile(me);
+      setEditEmail(user.email || "");
 
       await loadOrganizations(me.name);
     }
@@ -263,7 +274,206 @@ export default function SponsorView({ user, onLogout }) {
     }
   }
 
+  // -------- ACCOUNT MANAGEMENT --------
+  async function updateEmail() {
+    if (!editEmail || editEmail === user.email) {
+      setAccountMessage("No changes to save.");
+      return;
+    }
+
+    setUpdatingAccount(true);
+    setAccountMessage("");
+
+    try {
+      const res = await fetch("/api/users/update-email", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user.username,
+          newEmail: editEmail,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setAccountMessage("✓ Email updated successfully!");
+        // Update local user object
+        user.email = editEmail;
+        localStorage.setItem("user", JSON.stringify(user));
+      } else {
+        setAccountMessage(`✗ ${data.error || "Failed to update email"}`);
+      }
+    } catch (err) {
+      setAccountMessage("✗ Server error");
+    } finally {
+      setUpdatingAccount(false);
+    }
+  }
+
+  async function updatePassword() {
+    setAccountMessage("");
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setAccountMessage("✗ All password fields are required.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setAccountMessage("✗ New password must be at least 8 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setAccountMessage("✗ New passwords do not match.");
+      return;
+    }
+
+    setUpdatingAccount(true);
+
+    try {
+      const res = await fetch("/api/users/update-password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user.username,
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setAccountMessage("✓ Password updated successfully!");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        setAccountMessage(`✗ ${data.error || "Failed to update password"}`);
+      }
+    } catch (err) {
+      setAccountMessage("✗ Server error");
+    } finally {
+      setUpdatingAccount(false);
+    }
+  }
+
   // ============= VIEWS =============
+
+  if (view === "account") {
+    return (
+      <div className="sponsor-view">
+        <header className="sv-header">
+          <h1>Account Management</h1>
+          <button className="btn" onClick={() => setView("dashboard")}>
+            ← Back to Dashboard
+          </button>
+        </header>
+
+        <section className="panel">
+          <h2><User className="icon" /> Personal Information</h2>
+          
+          <div className="account-section">
+            <label className="label">Username</label>
+            <input
+              type="text"
+              className="input"
+              value={user.username}
+              disabled
+              style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+            />
+            <p className="help-text">Username cannot be changed</p>
+          </div>
+
+          <div className="account-section">
+            <label className="label">Email Address</label>
+            <input
+              type="email"
+              className="input"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              disabled={updatingAccount}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={updateEmail}
+              disabled={updatingAccount}
+            >
+              {updatingAccount ? "Updating..." : "Update Email"}
+            </button>
+          </div>
+
+          <div className="account-section">
+            <label className="label">Role</label>
+            <input
+              type="text"
+              className="input"
+              value={user.role}
+              disabled
+              style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+            />
+          </div>
+        </section>
+
+        <section className="panel">
+          <h2><Lock className="icon" /> Change Password</h2>
+
+          <div className="account-section">
+            <label className="label">Current Password</label>
+            <input
+              type="password"
+              className="input"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              disabled={updatingAccount}
+              placeholder="Enter current password"
+            />
+          </div>
+
+          <div className="account-section">
+            <label className="label">New Password</label>
+            <input
+              type="password"
+              className="input"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              disabled={updatingAccount}
+              placeholder="At least 8 characters"
+            />
+          </div>
+
+          <div className="account-section">
+            <label className="label">Confirm New Password</label>
+            <input
+              type="password"
+              className="input"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={updatingAccount}
+              placeholder="Re-enter new password"
+            />
+          </div>
+
+          <button
+            className="btn btn-primary"
+            onClick={updatePassword}
+            disabled={updatingAccount}
+          >
+            {updatingAccount ? "Updating..." : "Update Password"}
+          </button>
+        </section>
+
+        {accountMessage && (
+          <div className={`message ${accountMessage.includes("✓") ? "success" : "error"}`}>
+            {accountMessage}
+          </div>
+        )}
+
+        <style>{css}</style>
+      </div>
+    );
+  }
 
   if (view === "applications") {
     return (
@@ -467,6 +677,9 @@ export default function SponsorView({ user, onLogout }) {
           <button className="btn btn-secondary" onClick={() => setView("points")}>
             <Award className="icon" /> Award Points
           </button>
+          <button className="btn btn-secondary" onClick={() => setView("account")}>
+            <User className="icon" /> Account
+          </button>
           <button className="btn btn-logout" onClick={onLogout}>
             Log Out
           </button>
@@ -505,7 +718,6 @@ export default function SponsorView({ user, onLogout }) {
         </select>
       </section>
 
-      {/* ===== NEW — DRIVER POINTS TABLE ===== */}
       <section className="panel">
         <h2>Drivers & Points</h2>
 
@@ -539,25 +751,42 @@ export default function SponsorView({ user, onLogout }) {
 // -------- STYLE --------
 const css = `
 .sponsor-view { padding: 20px; max-width: 1400px; margin: auto; }
-.sv-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.sv-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-.panel { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; }
-.input { width: 100%; padding: 10px; margin-bottom: 10px; }
+.panel { background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; }
+.label { display: block; font-weight: 600; margin-bottom: 6px; color: #333; }
 
-.btn { padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+.btn { padding: 10px 14px; border-radius: 8px; cursor: pointer; border: none; font-weight: 600; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { transform: translateY(-1px); }
 .btn-secondary { background: #1976d2; color: white; }
 .btn-primary { background: #1565c0; color: white; }
 .btn-danger { background: #c62828; color: white; }
 .btn-logout { background: #d32f2f; color: white; }
+.btn-sm { padding: 6px 12px; font-size: 14px; }
+
+.icon { width: 18px; height: 18px; }
 
 .table { width: 100%; border-collapse: collapse; }
-.table th, .table td { padding: 10px; border-bottom: 1px solid #ddd; }
+.table th, .table td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+.table th { background: #f5f5f5; font-weight: 600; }
 
 .catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 16px; }
 .catalog-card { border: 1px solid #ccc; padding: 10px; border-radius: 8px; }
-.catalog-card img { width: 100%; height: 150px; object-fit: cover; border-radius: 6px; }
+.catalog-card img { width: 100%; height: 150px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; }
+.catalog-card h3 { font-size: 14px; margin: 8px 0; }
 
-.org-badge { background: #e3f2fd; padding: 6px 10px; border-radius: 8px; }
+.org-badge { background: #e3f2fd; padding: 6px 10px; border-radius: 8px; font-size: 14px; }
 .muted { color: #777; }
+
+.account-section { margin-bottom: 20px; }
+.help-text { font-size: 12px; color: #666; margin-top: 4px; }
+
+.message { padding: 12px 16px; border-radius: 8px; margin-top: 16px; font-weight: 600; }
+.message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.message.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+.search-bar { display: flex; gap: 10px; }
+.search-bar .input { flex: 1; }
 `;
