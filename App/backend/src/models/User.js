@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
+import DriverOrganizationLink from "./DriverOrganizationLink.js";  // <-- ADD THIS LINE
 
 const User = sequelize.define("User", {
   username: {
@@ -32,9 +33,9 @@ const User = sequelize.define("User", {
   },
   
   role: {
-    type: DataTypes.ENUM('driver', 'sponsor', 'admin'),
+    type: DataTypes.ENUM("driver", "sponsor", "admin"),
     allowNull: false,
-    defaultValue: 'driver',
+    defaultValue: "driver",
   },
 
   reset_code: {
@@ -52,7 +53,7 @@ const User = sequelize.define("User", {
   failed_attempts: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    defaultValue: '0',
+    defaultValue: "0",
   },
 
   last_failed_at: {
@@ -65,11 +66,26 @@ const User = sequelize.define("User", {
     type: DataTypes.DATE,
     allowNull: true,
     defaultValue: null,
-  }
-
+  },
 }, {
   tableName: "users",
-  timestamps: false, // We're manually handling created_at
+  timestamps: false,
 });
+
+// --------------------------------------------------
+// ADD THESE ASSOCIATIONS AT THE BOTTOM
+// --------------------------------------------------
+
+User.hasMany(DriverOrganizationLink, {
+  foreignKey: "driver_username",
+  sourceKey: "username",
+});
+
+DriverOrganizationLink.belongsTo(User, {
+  foreignKey: "driver_username",
+  targetKey: "username",
+});
+
+// --------------------------------------------------
 
 export default User;

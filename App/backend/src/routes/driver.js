@@ -1,6 +1,5 @@
 // backend/src/routes/driver.js
 import express from "express";
-import SponsorDriverLink from "../models/SponsorDriverLink.js";
 import Organization from "../models/Organization.js";
 import SponsorOrganizationLink from "../models/SponsorOrganizationLink.js";
 import PointsBalance from "../models/PointsBalance.js";
