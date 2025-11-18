@@ -21,11 +21,15 @@ import "./models/SponsorOrganizationLink.js";
 import "./models/OrganizationCatalog.js";
 import "./models/PointsBalance.js";
 import "./models/PointsTransaction.js";
+import reportsRouter from "./routes/reports.js";
+
 
 const app = express();
 
 // Middleware
 app.use(express.json());
+
+app.use("/api/reports", reportsRouter);
 
 // CORS middleware
 app.use((req, res, next) => {
