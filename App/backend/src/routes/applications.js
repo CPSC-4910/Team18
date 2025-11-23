@@ -14,7 +14,22 @@ router.post("/apply", async (req, res) => {
   const { driver_username, organization_id } = req.body;
 
   try {
-    const existing = await DriverOrganizationApplication.findOne({
+    // Check if driver is already a member of this organization
+    const existingMembership = await DriverOrganizationLink.findOne({
+      where: {
+        driver_username,
+        organization_id,
+      },
+    });
+
+    if (existingMembership) {
+      return res
+        .status(400)
+        .json({ msg: "You are already a member of this organization. You cannot re-apply." });
+    }
+
+    // Check if there's already a pending application
+    const existingApplication = await DriverOrganizationApplication.findOne({
       where: {
         driver_username,
         organization_id,
@@ -22,10 +37,10 @@ router.post("/apply", async (req, res) => {
       },
     });
 
-    if (existing) {
+    if (existingApplication) {
       return res
         .status(400)
-        .json({ msg: "You already applied to this organization." });
+        .json({ msg: "You already have a pending application for this organization. Please wait for a response." });
     }
 
     await DriverOrganizationApplication.create({

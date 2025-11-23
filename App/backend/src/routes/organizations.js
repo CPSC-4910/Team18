@@ -9,18 +9,25 @@ const router = express.Router();
 router.get("/by-sponsor/:username", async (req, res) => {
   try {
     const { username } = req.params;
+    console.log(`Fetching organizations for sponsor: ${username}`);
+    
     const links = await SponsorOrganizationLink.findAll({
       where: { sponsor_username: username },
       include: [{ model: Organization, as: "organization" }],
     });
     
-    // Map the link to include the organization details and the is_active flag
-    const orgs = links.map(link => ({
-      ...link.organization.toJSON(), // Spread organization details
-      is_active: link.is_active,     // Add the is_active flag
-      link_role: link.role
-    }));
+    console.log(`Found ${links.length} links for sponsor ${username}`);
+    
+    // Filter out links with null organizations and map to include organization details
+    const orgs = links
+      .filter(link => link.organization !== null) // Filter out null organizations
+      .map(link => ({
+        ...link.organization.toJSON(), // Spread organization details
+        is_active: link.is_active,     // Add the is_active flag
+        link_role: link.role
+      }));
 
+    console.log(`Returning ${orgs.length} organizations for sponsor ${username}`);
     res.json(orgs);
   } catch (err) {
     console.error("Error fetching sponsor organizations:", err);
@@ -156,6 +163,60 @@ router.get("/all", async (req, res) => {
   } catch (err) {
     console.error("Error loading organizations:", err);
     res.status(500).json({ error: "Failed to load organizations" });
+  }
+});
+
+// POST sponsor join organization
+router.post("/join", async (req, res) => {
+  try {
+    const { sponsor_username, organization_id } = req.body;
+
+    if (!sponsor_username || !organization_id) {
+      return res.status(400).json({ error: "sponsor_username and organization_id are required" });
+    }
+
+    // Verify organization exists
+    const organization = await Organization.findByPk(organization_id);
+    if (!organization) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+
+    // Check if link already exists
+    const existingLink = await SponsorOrganizationLink.findOne({
+      where: {
+        sponsor_username,
+        organization_id,
+      },
+    });
+
+    if (existingLink) {
+      // If link exists, just set it as active
+      await SponsorOrganizationLink.update(
+        { is_active: false },
+        { where: { sponsor_username } }
+      );
+      await existingLink.update({ is_active: true });
+      return res.json({ message: "Organization activated successfully" });
+    }
+
+    // Deactivate all other organizations for this sponsor
+    await SponsorOrganizationLink.update(
+      { is_active: false },
+      { where: { sponsor_username } }
+    );
+
+    // Create new link and set as active
+    const newLink = await SponsorOrganizationLink.create({
+      sponsor_username,
+      organization_id,
+      role: "member",
+      is_active: true,
+    });
+
+    res.status(201).json({ message: "Successfully joined organization", link: newLink });
+  } catch (err) {
+    console.error("Error joining organization:", err);
+    res.status(500).json({ error: "Failed to join organization" });
   }
 });
 

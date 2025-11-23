@@ -72,4 +72,34 @@ router.get("/:username", async (req, res) => {
   }
 });
 
+// DELETE remove driver from organization
+router.delete("/remove-driver", async (req, res) => {
+  try {
+    const { driver_username, organization_id } = req.body;
+
+    if (!driver_username || !organization_id) {
+      return res.status(400).json({ error: "driver_username and organization_id are required" });
+    }
+
+    // Find and delete the driver-organization link
+    const link = await DriverOrganizationLink.findOne({
+      where: {
+        driver_username,
+        organization_id,
+      },
+    });
+
+    if (!link) {
+      return res.status(404).json({ error: "Driver is not a member of this organization" });
+    }
+
+    await link.destroy();
+
+    res.json({ message: `Driver ${driver_username} has been removed from the organization` });
+  } catch (err) {
+    console.error("Error removing driver from organization:", err);
+    res.status(500).json({ error: "Failed to remove driver from organization" });
+  }
+});
+
 export default router;

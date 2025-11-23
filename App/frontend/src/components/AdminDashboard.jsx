@@ -267,18 +267,30 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // ===== User Management =====
   const handleDeleteUser = async (username, role) => {
-    if (!confirm(`Are you sure you want to delete ${role} '${username}'?`)) return;
+    if (!confirm(`Are you sure you want to delete ${role} '${username}'? This action cannot be undone.`)) return;
+    
+    setLoading(true);
     try {
       const response = await fetch(`/api/users/${username}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Failed to delete user");
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete user");
+      }
+      
+      // Update local state
       if (role === "driver") {
         setDrivers((prev) => prev.filter((u) => u.username !== username));
       } else {
         setSponsors((prev) => prev.filter((u) => u.username !== username));
       }
-      alert(`✅ ${role} '${username}' deleted successfully.`);
+      
+      alert(`✅ ${data.message || `${role} '${username}' deleted successfully.`}`);
     } catch (err) {
-      alert(`❌ ${err.message}`);
+      console.error("Error deleting user:", err);
+      alert(`❌ ${err.message || "Failed to delete user. Please try again."}`);
+    } finally {
+      setLoading(false);
     }
   };
 

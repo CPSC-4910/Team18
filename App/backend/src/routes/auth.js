@@ -3,7 +3,14 @@ import express from "express";
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
 import { Op } from "sequelize";
-import nodemailer from "nodemailer"
+import nodemailer from "nodemailer";
+import DriverOrganizationLink from "../models/DriverOrganizationLink.js";
+import SponsorOrganizationLink from "../models/SponsorOrganizationLink.js";
+import DriverOrganizationApplication from "../models/DriverOrganizationApplication.js";
+import PointsBalance from "../models/PointsBalance.js";
+import PointsTransaction from "../models/PointsTransaction.js";
+import OrganizationCatalog from "../models/OrganizationCatalog.js";
+
 const router = express.Router();
 
 //nodemailer setup, this is what gets gmail to work
@@ -236,37 +243,65 @@ router.post("/api/login", async (req, res) => {
 
 
 // DELETE /api/users/:username
-router.delete("/users/:username", async (req, res) => {
+router.delete("/api/users/:username", async (req, res) => {
   try {
     const { username } = req.params;
 
-    
     const user = await User.findOne({ where: { username } });
     if (!user) {
       return res.status(404).json({ error: `User '${username}' not found.` });
     }
 
-    //only admins can delete users 
-     if (req.user?.role !== "admin") {
-       return res.status(403).json({ error: "Access denied: Admins only" });
-     }
+    const role = user.role.toLowerCase();
+    const sequelize = User.sequelize;
 
-    
-    const [role] = [user.role.toLowerCase()];
-    const sequelize = User.sequelize; 
-
-    if (role === "driver" || role === "sponsor") {
+    // Delete all related records based on role
+    if (role === "driver") {
+      // Delete driver-organization links
+      await DriverOrganizationLink.destroy({ where: { driver_username: username } });
       
-      await sequelize.query(
-        `
-        DELETE FROM SponsorDriverLink
-        WHERE sponsor_username = :username OR driver_username = :username
-        `,
-        { replacements: { username } }
-      );
+      // Delete driver applications
+      await DriverOrganizationApplication.destroy({ where: { driver_username: username } });
+      
+      // Delete points balances
+      await PointsBalance.destroy({ where: { driver_username: username } });
+      
+      // Delete points transactions
+      await PointsTransaction.destroy({ where: { driver_username: username } });
+      
+      // Delete sponsor-driver links (if table exists)
+      try {
+        await sequelize.query(
+          `DELETE FROM SponsorDriverLink WHERE driver_username = :username`,
+          { replacements: { username } }
+        );
+      } catch (err) {
+        // Table might not exist, ignore error
+        console.log("SponsorDriverLink table not found or already cleaned");
+      }
+    } else if (role === "sponsor") {
+      // Delete sponsor-organization links
+      await SponsorOrganizationLink.destroy({ where: { sponsor_username: username } });
+      
+      // Delete catalog items added by this sponsor
+      await OrganizationCatalog.destroy({ where: { sponsor_username: username } });
+      
+      // Delete points transactions where sponsor awarded points
+      await PointsTransaction.destroy({ where: { sponsor_username: username } });
+      
+      // Delete sponsor-driver links (if table exists)
+      try {
+        await sequelize.query(
+          `DELETE FROM SponsorDriverLink WHERE sponsor_username = :username`,
+          { replacements: { username } }
+        );
+      } catch (err) {
+        // Table might not exist, ignore error
+        console.log("SponsorDriverLink table not found or already cleaned");
+      }
     }
 
-    
+    // Finally, delete the user
     await User.destroy({ where: { username } });
 
     res.json({
@@ -274,7 +309,7 @@ router.delete("/users/:username", async (req, res) => {
     });
   } catch (error) {
     console.error("Error deleting user:", error);
-    res.status(500).json({ error: "Server error deleting user and linked records." });
+    res.status(500).json({ error: "Server error deleting user and linked records.", details: error.message });
   }
 });
 
