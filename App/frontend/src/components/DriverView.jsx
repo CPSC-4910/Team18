@@ -37,12 +37,19 @@ export default function DriverView({ user, onLogout }) {
   // Alerts
   const [alerts, setAlerts] = useState([]);
   const [loadingAlerts, setLoadingAlerts] = useState(false);
+  
+  // Point Alerts
+  const [pointAlerts, setPointAlerts] = useState([]);
+  const [loadingPointAlerts, setLoadingPointAlerts] = useState(false);
+  const [pointAlertsEnabled, setPointAlertsEnabled] = useState(true);
 
   useEffect(() => {
     loadOrganizations();
     loadMyApplications();
     loadMyMemberships();
     loadAlerts();
+    loadPointAlerts();
+    loadPointAlertsPreference();
     setEditEmail(user.email || "");
   }, [user?.username]);
 
@@ -50,6 +57,7 @@ export default function DriverView({ user, onLogout }) {
   useEffect(() => {
     if (view === "dashboard") {
       loadAlerts();
+      loadPointAlerts();
     }
   }, [view]);
 
@@ -206,6 +214,73 @@ export default function DriverView({ user, onLogout }) {
       }
     } catch (err) {
       console.error("Failed to mark all alerts as read:", err);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Load Point Alerts
+  // ------------------------------------------------------------
+  async function loadPointAlerts() {
+    setLoadingPointAlerts(true);
+    try {
+      const res = await fetch(`/api/driver/point-alerts/${user.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPointAlerts(data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load point alerts:", err);
+    } finally {
+      setLoadingPointAlerts(false);
+    }
+  }
+
+  // Load point alerts preference
+  async function loadPointAlertsPreference() {
+    try {
+      const res = await fetch(`/api/driver/point-alerts-preference/${user.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPointAlertsEnabled(data.point_alerts_enabled ?? true);
+      }
+    } catch (err) {
+      console.error("Failed to load point alerts preference:", err);
+    }
+  }
+
+  // Mark point alert as read
+  async function markPointAlertAsRead(alertId) {
+    try {
+      const res = await fetch(`/api/driver/point-alerts/${alertId}/read`, {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        setPointAlerts(prev => prev.map(alert => 
+          alert.id === alertId ? { ...alert, is_read: true } : alert
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to mark point alert as read:", err);
+    }
+  }
+
+  // Toggle point alerts preference
+  async function togglePointAlertsPreference() {
+    const newValue = !pointAlertsEnabled;
+    try {
+      const res = await fetch(`/api/driver/point-alerts-preference/${user.username}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ point_alerts_enabled: newValue }),
+      });
+      if (res.ok) {
+        setPointAlertsEnabled(newValue);
+      } else {
+        alert("Failed to update preference");
+      }
+    } catch (err) {
+      console.error("Failed to update point alerts preference:", err);
+      alert("Server error");
     }
   }
 
@@ -451,6 +526,82 @@ export default function DriverView({ user, onLogout }) {
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => markAlertAsRead(alert.id)}
+                            style={{ marginLeft: "12px", flexShrink: 0 }}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Point Alerts Section - Only shown if enabled */}
+              {pointAlertsEnabled && pointAlerts.filter(a => !a.is_read).length > 0 && (
+                <div className="panel" style={{ 
+                  background: "linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)",
+                  border: "2px solid #3b82f6",
+                  marginBottom: "24px"
+                }}>
+                  <div className="panel-header" style={{ marginBottom: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Award className="w-5 h-5" style={{ color: "#2563eb" }} />
+                      <h2 style={{ color: "#1e40af", margin: 0 }}>Point Changes</h2>
+                      <span style={{ 
+                        background: "#2563eb", 
+                        color: "white", 
+                        padding: "2px 8px", 
+                        borderRadius: "12px", 
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        marginLeft: "8px"
+                      }}>
+                        {pointAlerts.filter(a => !a.is_read).length}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="alerts-list">
+                    {pointAlerts.filter(a => !a.is_read).map((alert) => (
+                      <div 
+                        key={alert.id} 
+                        className="alert-item"
+                        style={{
+                          background: "white",
+                          padding: "16px",
+                          borderRadius: "8px",
+                          marginBottom: "12px",
+                          border: "1px solid #60a5fa",
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                              {alert.type === "award" ? (
+                                <Award className="w-5 h-5" style={{ color: "#10b981", flexShrink: 0 }} />
+                              ) : (
+                                <TrendingUp className="w-5 h-5" style={{ color: "#dc2626", flexShrink: 0 }} />
+                              )}
+                              <h3 style={{ margin: 0, color: "#1e40af", fontSize: "16px", fontWeight: 600 }}>
+                                {alert.type === "award" ? `+${alert.points} points` : `${alert.points} points deducted`} from {alert.organization_name}
+                              </h3>
+                            </div>
+                            <p style={{ margin: 0, color: "#1e3a8a", fontSize: "14px", lineHeight: "1.5", marginLeft: "28px" }}>
+                              <strong>Reason:</strong> {alert.reason}
+                            </p>
+                            {alert.sponsor_username && (
+                              <p style={{ margin: "4px 0 0 28px", color: "#3b82f6", fontSize: "12px" }}>
+                                By sponsor: {alert.sponsor_username}
+                              </p>
+                            )}
+                            <p style={{ margin: "8px 0 0 28px", color: "#60a5fa", fontSize: "12px" }}>
+                              {new Date(alert.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => markPointAlertAsRead(alert.id)}
                             style={{ marginLeft: "12px", flexShrink: 0 }}
                           >
                             Dismiss
@@ -773,6 +924,32 @@ export default function DriverView({ user, onLogout }) {
                   <p>{accountMessage}</p>
                 </div>
               )}
+
+              <div className="panel">
+                <h2><Bell className="w-5 h-5" style={{ display: "inline", marginRight: "8px" }} /> Notification Preferences</h2>
+                
+                <div className="form-group">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: "#f9fafb", borderRadius: "8px" }}>
+                    <div>
+                      <label className="form-label" style={{ marginBottom: "4px" }}>Point Change Alerts</label>
+                      <p className="form-help" style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
+                        Receive notifications when points are added or deducted from your account
+                      </p>
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={pointAlertsEnabled}
+                        onChange={togglePointAlertsPreference}
+                        style={{ width: "20px", height: "20px", cursor: "pointer", marginRight: "8px" }}
+                      />
+                      <span style={{ fontWeight: 600, color: pointAlertsEnabled ? "#10b981" : "#6b7280" }}>
+                        {pointAlertsEnabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
             </>
           )}
         </div>

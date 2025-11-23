@@ -52,13 +52,16 @@ export default function SponsorView({ user, onLogout }) {
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [searchTerm, setSearchTerm] = useState("truck parts");
 
-  // Award Points
+  // Award/Deduct Points
   const [drivers, setDrivers] = useState([]);
   const [driverPoints, setDriverPoints] = useState({});
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [pointsToAward, setPointsToAward] = useState("");
+  const [pointsToDeduct, setPointsToDeduct] = useState("");
   const [pointsReason, setPointsReason] = useState("");
+  const [deductReason, setDeductReason] = useState("");
   const [awardingPoints, setAwardingPoints] = useState(false);
+  const [deductingPoints, setDeductingPoints] = useState(false);
 
   // Account Management
   const [editEmail, setEditEmail] = useState("");
@@ -284,6 +287,11 @@ export default function SponsorView({ user, onLogout }) {
       return;
     }
 
+    if (!pointsReason || pointsReason.trim() === "") {
+      alert("Reason is required for awarding points.");
+      return;
+    }
+
     const points = parseInt(pointsToAward);
     if (isNaN(points) || points <= 0) {
       alert("Enter a positive number.");
@@ -301,14 +309,14 @@ export default function SponsorView({ user, onLogout }) {
           sponsor_username: profile.name,
           organization_id: activeOrg.id,
           points,
-          reason: pointsReason || "Points awarded",
+          reason: pointsReason,
         }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        alert("Points awarded!");
+        alert(`Points awarded! New balance: ${data.newBalance} points.`);
         loadDriverPoints(activeOrg.id);
         setPointsToAward("");
         setPointsReason("");
@@ -318,8 +326,70 @@ export default function SponsorView({ user, onLogout }) {
       }
     } catch (err) {
       console.error("Award points error:", err);
+      alert("Server error while awarding points.");
     } finally {
       setAwardingPoints(false);
+    }
+  }
+
+  async function deductPoints() {
+    if (!selectedDriver || !pointsToDeduct || !activeOrg) {
+      alert("Missing required fields.");
+      return;
+    }
+
+    if (!deductReason || deductReason.trim() === "") {
+      alert("Reason is required for deducting points.");
+      return;
+    }
+
+    const points = parseInt(pointsToDeduct);
+    if (isNaN(points) || points <= 0) {
+      alert("Enter a positive number.");
+      return;
+    }
+
+    const currentBalance = driverPoints[selectedDriver] || 0;
+    if (points > currentBalance) {
+      alert(`Cannot deduct ${points} points. Driver only has ${currentBalance} points.`);
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to deduct ${points} points from ${selectedDriver}?`)) {
+      return;
+    }
+
+    setDeductingPoints(true);
+
+    try {
+      const res = await fetch("/api/points/deduct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driver_username: selectedDriver,
+          sponsor_username: profile.name,
+          organization_id: activeOrg.id,
+          points,
+          reason: deductReason,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert(`Points deducted! New balance: ${data.newBalance} points.`);
+        loadDriverPoints(activeOrg.id);
+        setPointsToDeduct("");
+        setDeductReason("");
+        setSelectedDriver("");
+      } else {
+        alert(data.error || "Error deducting points.");
+      }
+    } catch (err) {
+      console.error("Deduct points error:", err);
+      alert("Server error while deducting points.");
+    } finally {
+      setDeductingPoints(false);
     }
   }
 
@@ -812,49 +882,106 @@ export default function SponsorView({ user, onLogout }) {
           )}
 
           {view === "points" && (
-            <div className="panel">
-              <h2>Award Points</h2>
-              <div className="form-group">
-                <label className="form-label">Select Driver</label>
-          <select
-                  className="form-input"
-                  value={selectedDriver || ""}
-            onChange={(e) => setSelectedDriver(e.target.value)}
-          >
-            <option value="">-- Select Driver --</option>
-            {drivers.map((d) => (
-              <option key={d.driver_username} value={d.driver_username}>
-                {d.driver_username} — {driverPoints[d.driver_username] || 0} pts
-              </option>
-            ))}
-          </select>
+            <>
+              <div className="panel">
+                <h2><Award className="w-5 h-5" style={{ display: "inline", marginRight: "8px" }} /> Award Points</h2>
+                <div className="form-group">
+                  <label className="form-label">Select Driver</label>
+                  <select
+                    className="form-input"
+                    value={selectedDriver || ""}
+                    onChange={(e) => setSelectedDriver(e.target.value)}
+                  >
+                    <option value="">-- Select Driver --</option>
+                    {drivers.map((d) => (
+                      <option key={d.driver_username} value={d.driver_username}>
+                        {d.driver_username} — {driverPoints[d.driver_username] || 0} pts
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Points</label>
+                  <input
+                    className="form-input"
+                    type="number"
+                    value={pointsToAward}
+                    onChange={(e) => setPointsToAward(e.target.value)}
+                    placeholder="e.g. 100"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Reason <span style={{ color: "#dc2626" }}>*</span></label>
+                  <input
+                    className="form-input"
+                    value={pointsReason}
+                    onChange={(e) => setPointsReason(e.target.value)}
+                    placeholder="Reason for awarding points (required)"
+                    required
+                  />
+                </div>
+
+                <button className="btn btn-primary" onClick={awardPoints} disabled={awardingPoints || !selectedDriver || !pointsToAward || !pointsReason}>
+                  {awardingPoints ? "Awarding..." : "Award Points"}
+                </button>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Points</label>
-          <input
-                  className="form-input"
-            type="number"
-            value={pointsToAward}
-            onChange={(e) => setPointsToAward(e.target.value)}
-            placeholder="e.g. 100"
-          />
-              </div>
+              <div className="panel" style={{ borderTop: "2px solid #fee2e2", marginTop: "24px" }}>
+                <h2 style={{ color: "#dc2626" }}><TrendingUp className="w-5 h-5" style={{ display: "inline", marginRight: "8px" }} /> Deduct Points</h2>
+                <div className="form-group">
+                  <label className="form-label">Select Driver</label>
+                  <select
+                    className="form-input"
+                    value={selectedDriver || ""}
+                    onChange={(e) => setSelectedDriver(e.target.value)}
+                  >
+                    <option value="">-- Select Driver --</option>
+                    {drivers.map((d) => (
+                      <option key={d.driver_username} value={d.driver_username}>
+                        {d.driver_username} — {driverPoints[d.driver_username] || 0} pts
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="form-group">
-                <label className="form-label">Reason (Optional)</label>
-          <input
-                  className="form-input"
-            value={pointsReason}
-            onChange={(e) => setPointsReason(e.target.value)}
-                  placeholder="Reason for awarding points"
-          />
-              </div>
+                <div className="form-group">
+                  <label className="form-label">Points to Deduct</label>
+                  <input
+                    className="form-input"
+                    type="number"
+                    value={pointsToDeduct}
+                    onChange={(e) => setPointsToDeduct(e.target.value)}
+                    placeholder="e.g. 50"
+                  />
+                  {selectedDriver && driverPoints[selectedDriver] !== undefined && (
+                    <p className="form-help">
+                      Current balance: {driverPoints[selectedDriver]} points
+                    </p>
+                  )}
+                </div>
 
-              <button className="btn btn-primary" onClick={awardPoints} disabled={awardingPoints || !selectedDriver || !pointsToAward}>
-            {awardingPoints ? "Awarding..." : "Award Points"}
-          </button>
-      </div>
+                <div className="form-group">
+                  <label className="form-label">Reason <span style={{ color: "#dc2626" }}>*</span></label>
+                  <input
+                    className="form-input"
+                    value={deductReason}
+                    onChange={(e) => setDeductReason(e.target.value)}
+                    placeholder="Reason for deducting points (required)"
+                    required
+                  />
+                </div>
+
+                <button 
+                  className="btn btn-danger" 
+                  onClick={deductPoints} 
+                  disabled={deductingPoints || !selectedDriver || !pointsToDeduct || !deductReason}
+                >
+                  {deductingPoints ? "Deducting..." : "Deduct Points"}
+                </button>
+              </div>
+            </>
           )}
 
           {view === "catalog" && (

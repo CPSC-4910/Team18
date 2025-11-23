@@ -67,6 +67,12 @@ const User = sequelize.define("User", {
     allowNull: true,
     defaultValue: null,
   },
+
+  point_alerts_enabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+  },
 }, {
   tableName: "users",
   timestamps: false,

@@ -4,6 +4,8 @@ import Organization from "../models/Organization.js";
 import SponsorOrganizationLink from "../models/SponsorOrganizationLink.js";
 import PointsBalance from "../models/PointsBalance.js";
 import DriverAlert from "../models/DriverAlert.js";
+import DriverPointAlert from "../models/DriverPointAlert.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
@@ -130,6 +132,65 @@ router.patch("/alerts/:username/read-all", async (req, res) => {
   } catch (err) {
     console.error("Error marking all alerts as read:", err);
     res.status(500).json({ error: "Failed to mark all alerts as read" });
+  }
+});
+
+// GET /api/driver/point-alerts/:username - Get all point alerts for a driver
+router.get("/point-alerts/:username", async (req, res) => {
+  try {
+    const alerts = await DriverPointAlert.findAll({
+      where: { driver_username: req.params.username },
+      order: [["created_at", "DESC"]],
+    });
+    res.json(alerts);
+  } catch (err) {
+    console.error("Error fetching driver point alerts:", err);
+    res.status(500).json({ error: "Failed to fetch point alerts" });
+  }
+});
+
+// PATCH /api/driver/point-alerts/:alertId/read - Mark a point alert as read
+router.patch("/point-alerts/:alertId/read", async (req, res) => {
+  try {
+    const alert = await DriverPointAlert.findByPk(req.params.alertId);
+    if (!alert) {
+      return res.status(404).json({ error: "Alert not found" });
+    }
+    await alert.update({ is_read: true });
+    res.json({ message: "Alert marked as read" });
+  } catch (err) {
+    console.error("Error marking point alert as read:", err);
+    res.status(500).json({ error: "Failed to mark alert as read" });
+  }
+});
+
+// GET /api/driver/point-alerts-preference/:username - Get point alerts preference
+router.get("/point-alerts-preference/:username", async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.username);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ point_alerts_enabled: user.point_alerts_enabled ?? true });
+  } catch (err) {
+    console.error("Error fetching point alerts preference:", err);
+    res.status(500).json({ error: "Failed to fetch preference" });
+  }
+});
+
+// PATCH /api/driver/point-alerts-preference/:username - Update point alerts preference
+router.patch("/point-alerts-preference/:username", async (req, res) => {
+  try {
+    const { point_alerts_enabled } = req.body;
+    const user = await User.findByPk(req.params.username);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    await user.update({ point_alerts_enabled: point_alerts_enabled ?? true });
+    res.json({ message: "Preference updated", point_alerts_enabled: user.point_alerts_enabled });
+  } catch (err) {
+    console.error("Error updating point alerts preference:", err);
+    res.status(500).json({ error: "Failed to update preference" });
   }
 });
 

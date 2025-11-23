@@ -4,6 +4,9 @@ import sequelize from "../config/database.js";
 import PointsBalance from "../models/PointsBalance.js";
 import PointsTransaction from "../models/PointsTransaction.js";
 import OrganizationCatalog from "../models/OrganizationCatalog.js";
+import DriverPointAlert from "../models/DriverPointAlert.js";
+import Organization from "../models/Organization.js";
+import User from "../models/User.js";
 
 const router = express.Router();
 
@@ -36,15 +39,25 @@ router.post("/award", async (req, res) => {
     return res.status(400).json({ error: "Points must be a positive number" });
   }
 
+  if (!reason || reason.trim() === "") {
+    return res.status(400).json({ error: "Reason is required for point changes" });
+  }
+
   const t = await sequelize.transaction();
   try {
+    // Get organization name for alert
+    const organization = await Organization.findByPk(organization_id, { transaction: t });
+    if (!organization) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+
     // 1. Create the transaction log
     await PointsTransaction.create({
       driver_username,
       organization_id,
       sponsor_username,
       points: points,
-      reason: reason || "Points awarded by sponsor",
+      reason: reason,
       type: "award",
     }, { transaction: t });
 
@@ -59,6 +72,26 @@ router.post("/award", async (req, res) => {
     balance.balance += points;
     await balance.save({ transaction: t });
 
+    // 4. Create alert if driver has point alerts enabled
+    try {
+      const driver = await User.findByPk(driver_username, { transaction: t });
+      if (driver && driver.point_alerts_enabled) {
+        await DriverPointAlert.create({
+          driver_username,
+          organization_id,
+          organization_name: organization.name,
+          points: points,
+          reason: reason,
+          type: "award",
+          sponsor_username: sponsor_username,
+          is_read: false,
+        }, { transaction: t });
+      }
+    } catch (alertErr) {
+      // Log but don't fail the transaction if alert creation fails
+      console.error("Warning: Failed to create point alert:", alertErr.message);
+    }
+
     // Commit the transaction
     await t.commit();
 
@@ -67,6 +100,94 @@ router.post("/award", async (req, res) => {
     await t.rollback();
     console.error("Award points error:", err);
     res.status(500).json({ error: "Failed to award points" });
+  }
+});
+
+// POST /api/points/deduct - Sponsor deducts points from driver
+router.post("/deduct", async (req, res) => {
+  const {
+    driver_username,
+    sponsor_username,
+    organization_id,
+    points,
+    reason,
+  } = req.body;
+
+  if (points <= 0) {
+    return res.status(400).json({ error: "Points must be a positive number" });
+  }
+
+  if (!reason || reason.trim() === "") {
+    return res.status(400).json({ error: "Reason is required for point deductions" });
+  }
+
+  const t = await sequelize.transaction();
+  try {
+    // Get organization name for alert
+    const organization = await Organization.findByPk(organization_id, { transaction: t });
+    if (!organization) {
+      return res.status(404).json({ error: "Organization not found" });
+    }
+
+    // 1. Find the driver's balance
+    const balance = await PointsBalance.findOne({
+      where: { driver_username, organization_id },
+      transaction: t,
+    });
+
+    if (!balance) {
+      return res.status(404).json({ error: "Driver balance not found" });
+    }
+
+    // 2. Check if driver has enough points
+    if (balance.balance < points) {
+      return res.status(400).json({ 
+        error: `Insufficient points. Driver has ${balance.balance} points, cannot deduct ${points} points.` 
+      });
+    }
+
+    // 3. Create the transaction log
+    await PointsTransaction.create({
+      driver_username,
+      organization_id,
+      sponsor_username,
+      points: -points, // Negative for deduction
+      reason: reason,
+      type: "deduct",
+    }, { transaction: t });
+
+    // 4. Update the balance
+    balance.balance -= points;
+    await balance.save({ transaction: t });
+
+    // 5. Create alert if driver has point alerts enabled
+    try {
+      const driver = await User.findByPk(driver_username, { transaction: t });
+      if (driver && driver.point_alerts_enabled) {
+        await DriverPointAlert.create({
+          driver_username,
+          organization_id,
+          organization_name: organization.name,
+          points: -points,
+          reason: reason,
+          type: "deduct",
+          sponsor_username: sponsor_username,
+          is_read: false,
+        }, { transaction: t });
+      }
+    } catch (alertErr) {
+      // Log but don't fail the transaction if alert creation fails
+      console.error("Warning: Failed to create point alert:", alertErr.message);
+    }
+
+    // Commit the transaction
+    await t.commit();
+
+    res.json({ message: "Points deducted successfully", newBalance: balance.balance });
+  } catch (err) {
+    await t.rollback();
+    console.error("Deduct points error:", err);
+    res.status(500).json({ error: "Failed to deduct points" });
   }
 });
 
