@@ -4,6 +4,7 @@ import DriverOrganizationLink from "../models/DriverOrganizationLink.js";
 import Organization from "../models/Organization.js";
 import User from "../models/User.js";
 import PointsBalance from "../models/PointsBalance.js";
+import DriverAlert from "../models/DriverAlert.js";
 
 const router = express.Router();
 
@@ -75,10 +76,16 @@ router.get("/:username", async (req, res) => {
 // DELETE remove driver from organization
 router.delete("/remove-driver", async (req, res) => {
   try {
-    const { driver_username, organization_id } = req.body;
+    const { driver_username, organization_id, removed_by_username, removed_by_role } = req.body;
 
     if (!driver_username || !organization_id) {
       return res.status(400).json({ error: "driver_username and organization_id are required" });
+    }
+
+    // Find the organization to get its name
+    const organization = await Organization.findByPk(organization_id);
+    if (!organization) {
+      return res.status(404).json({ error: "Organization not found" });
     }
 
     // Find and delete the driver-organization link
@@ -91,6 +98,28 @@ router.delete("/remove-driver", async (req, res) => {
 
     if (!link) {
       return res.status(404).json({ error: "Driver is not a member of this organization" });
+    }
+
+    // Create alert for the driver before removing the link
+    // Wrap in try-catch so alert creation failure doesn't prevent driver removal
+    try {
+      const removedByText = removed_by_username 
+        ? ` by ${removed_by_role === "admin" ? "Admin" : "Sponsor"} ${removed_by_username}`
+        : "";
+      await DriverAlert.create({
+        driver_username,
+        organization_id,
+        organization_name: organization.name,
+        message: `You have been removed from the organization "${organization.name}". You will no longer be able to earn or redeem points with this organization.`,
+        removed_by_username: removed_by_username || null,
+        removed_by_role: removed_by_role || null,
+        is_read: false,
+      });
+    } catch (alertErr) {
+      // Log the error but don't fail the operation
+      // This allows driver removal to succeed even if the DriverAlert table doesn't exist yet
+      console.error("Warning: Failed to create alert for driver removal:", alertErr.message);
+      console.error("Note: If the DriverAlert table doesn't exist, run the SQL script to create it.");
     }
 
     await link.destroy();

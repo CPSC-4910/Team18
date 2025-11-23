@@ -241,6 +241,8 @@ export default function SponsorView({ user, onLogout }) {
         body: JSON.stringify({
           driver_username: driverUsername,
           organization_id: activeOrg.id,
+          removed_by_username: user.username,
+          removed_by_role: "sponsor",
         }),
       });
 
@@ -488,7 +490,7 @@ export default function SponsorView({ user, onLogout }) {
   const catalogItems = myCatalog.length;
 
   // -------- DASHBOARD --------
-  return (
+    return (
     <div className="sponsor-dashboard">
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? "open" : "closed"}`}>
@@ -557,7 +559,7 @@ export default function SponsorView({ user, onLogout }) {
                 <div className="alert alert-error">
                   <XCircle className="w-5 h-5" />
                   <p>{error}</p>
-                </div>
+          </div>
               )}
 
               {/* Stats Cards */}
@@ -611,14 +613,14 @@ export default function SponsorView({ user, onLogout }) {
                         ))}
                       </select>
                     </div>
-                    <button
-                      className="btn btn-primary"
+            <button
+              className="btn btn-primary"
                       onClick={() => joinOrganization(selectedOrgToJoin)}
                       disabled={!selectedOrgToJoin}
-                    >
+            >
                       Join Organization
-                    </button>
-                  </div>
+            </button>
+          </div>
                 </div>
               )}
 
@@ -627,7 +629,7 @@ export default function SponsorView({ user, onLogout }) {
                 <div className="panel">
                   <div className="panel-header">
                     <h2>Active Organization</h2>
-                  </div>
+          </div>
                   <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
                     <div style={{ flex: 1 }}>
                       <label className="form-label">Switch Organization</label>
@@ -658,9 +660,9 @@ export default function SponsorView({ user, onLogout }) {
                           </option>
                         ))}
                       </select>
-                    </div>
-                  </div>
-                </div>
+          </div>
+          </div>
+          </div>
               )}
 
               {/* Join Additional Organizations */}
@@ -686,23 +688,23 @@ export default function SponsorView({ user, onLogout }) {
                           ))}
                       </select>
                     </div>
-                    <button
-                      className="btn btn-primary"
+          <button
+            className="btn btn-primary"
                       onClick={() => joinOrganization(selectedOrgToJoin)}
                       disabled={!selectedOrgToJoin}
-                    >
+          >
                       Join Organization
-                    </button>
+          </button>
                   </div>
-                </div>
-              )}
+          </div>
+        )}
 
               {/* Drivers & Points */}
               {activeOrg && (
                 <div className="panel">
                   <div className="panel-header">
                     <h2>Drivers & Points</h2>
-                  </div>
+      </div>
                   {drivers.length === 0 ? (
                     <div className="empty-state">
                       <Users className="w-12 h-12" />
@@ -735,7 +737,7 @@ export default function SponsorView({ user, onLogout }) {
                                   title={`Remove ${driver.driver_username} from ${activeOrg.name}`}
                                 >
                                   <Trash2 className="w-4 h-4" /> Remove
-                                </button>
+          </button>
                               </td>
                             </tr>
                           ))}
@@ -751,27 +753,27 @@ export default function SponsorView({ user, onLogout }) {
           {view === "applications" && (
             <div className="panel">
               <div className="panel-header">
-                <h2>Pending Applications</h2>
+          <h2>Pending Applications</h2>
               </div>
-              {applications.length === 0 ? (
+          {applications.length === 0 ? (
                 <div className="empty-state">
                   <Users className="w-12 h-12" />
                   <p>No pending applications.</p>
                 </div>
-              ) : (
+          ) : (
                 <div className="table-container">
                   <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Driver</th>
-                        <th>Status</th>
-                        <th>Applied At</th>
+              <thead>
+                <tr>
+                  <th>Driver</th>
+                  <th>Status</th>
+                  <th>Applied At</th>
                         <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {applications.map((app) => (
-                        <tr key={app.id}>
+                </tr>
+              </thead>
+              <tbody>
+                {applications.map((app) => (
+                  <tr key={app.id}>
                           <td>
                             <div className="user-cell">
                               <div className="user-avatar">{app.driver_username.charAt(0).toUpperCase()}</div>
@@ -783,30 +785,30 @@ export default function SponsorView({ user, onLogout }) {
                               {app.status}
                             </span>
                           </td>
-                          <td>{new Date(app.applied_at).toLocaleString()}</td>
-                          <td>
+                    <td>{new Date(app.applied_at).toLocaleString()}</td>
+                    <td>
                             <div className="action-group">
-                              <button
-                                className="btn btn-primary btn-sm"
-                                onClick={() => approveApplication(app.id)}
-                              >
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => approveApplication(app.id)}
+                      >
                                 <CheckCircle className="w-4 h-4" /> Approve
-                              </button>
-                              <button
-                                className="btn btn-danger btn-sm"
-                                onClick={() => denyApplication(app.id)}
-                              >
+                      </button>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() => denyApplication(app.id)}
+                      >
                                 <XCircle className="w-4 h-4" /> Deny
-                              </button>
+                      </button>
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
                 </div>
-              )}
-            </div>
+          )}
+      </div>
           )}
 
           {view === "points" && (
@@ -814,116 +816,116 @@ export default function SponsorView({ user, onLogout }) {
               <h2>Award Points</h2>
               <div className="form-group">
                 <label className="form-label">Select Driver</label>
-                <select
+          <select
                   className="form-input"
                   value={selectedDriver || ""}
-                  onChange={(e) => setSelectedDriver(e.target.value)}
-                >
-                  <option value="">-- Select Driver --</option>
-                  {drivers.map((d) => (
-                    <option key={d.driver_username} value={d.driver_username}>
-                      {d.driver_username} — {driverPoints[d.driver_username] || 0} pts
-                    </option>
-                  ))}
-                </select>
+            onChange={(e) => setSelectedDriver(e.target.value)}
+          >
+            <option value="">-- Select Driver --</option>
+            {drivers.map((d) => (
+              <option key={d.driver_username} value={d.driver_username}>
+                {d.driver_username} — {driverPoints[d.driver_username] || 0} pts
+              </option>
+            ))}
+          </select>
               </div>
 
               <div className="form-group">
                 <label className="form-label">Points</label>
-                <input
+          <input
                   className="form-input"
-                  type="number"
-                  value={pointsToAward}
-                  onChange={(e) => setPointsToAward(e.target.value)}
-                  placeholder="e.g. 100"
-                />
+            type="number"
+            value={pointsToAward}
+            onChange={(e) => setPointsToAward(e.target.value)}
+            placeholder="e.g. 100"
+          />
               </div>
 
               <div className="form-group">
                 <label className="form-label">Reason (Optional)</label>
-                <input
+          <input
                   className="form-input"
-                  value={pointsReason}
-                  onChange={(e) => setPointsReason(e.target.value)}
+            value={pointsReason}
+            onChange={(e) => setPointsReason(e.target.value)}
                   placeholder="Reason for awarding points"
-                />
+          />
               </div>
 
               <button className="btn btn-primary" onClick={awardPoints} disabled={awardingPoints || !selectedDriver || !pointsToAward}>
-                {awardingPoints ? "Awarding..." : "Award Points"}
-              </button>
-            </div>
+            {awardingPoints ? "Awarding..." : "Award Points"}
+          </button>
+      </div>
           )}
 
           {view === "catalog" && (
             <>
               <div className="panel">
-                <h2>Search eBay</h2>
-                <div className="search-bar">
-                  <input
+          <h2>Search eBay</h2>
+          <div className="search-bar">
+            <input
                     className="form-input"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search for items..."
-                  />
-                  <button className="btn btn-primary" onClick={() => loadEbayCatalog(searchTerm)}>
-                    Search
-                  </button>
-                </div>
+            />
+            <button className="btn btn-primary" onClick={() => loadEbayCatalog(searchTerm)}>
+              Search
+            </button>
+          </div>
 
-                {loadingCatalog ? (
+          {loadingCatalog ? (
                   <div className="loading-state">
                     <Activity className="w-8 h-8 animate-spin" />
                     <p>Loading eBay items...</p>
                   </div>
-                ) : (
-                  <div className="catalog-grid">
-                    {catalog.map((item) => (
-                      <div key={item.itemId} className="catalog-card">
+          ) : (
+            <div className="catalog-grid">
+              {catalog.map((item) => (
+                <div key={item.itemId} className="catalog-card">
                         <img src={item.image?.imageUrl} alt={item.title} />
-                        <h3>{item.title}</h3>
+                  <h3>{item.title}</h3>
                         <p className="price">${item.price?.value} {item.price?.currency}</p>
-                        <button
-                          className="btn btn-primary btn-sm"
-                          onClick={() => {
-                            const points = prompt("Enter points cost:", "100");
-                            if (points) addToCatalog(item, parseInt(points));
-                          }}
-                        >
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      const points = prompt("Enter points cost:", "100");
+                      if (points) addToCatalog(item, parseInt(points));
+                    }}
+                  >
                           + Add to Catalog
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
               </div>
 
               <div className="panel">
-                <h2>My Catalog</h2>
+          <h2>My Catalog</h2>
                 {myCatalog.length === 0 ? (
                   <div className="empty-state">
                     <Package className="w-12 h-12" />
                     <p>No items in catalog yet.</p>
                   </div>
                 ) : (
-                  <div className="catalog-grid">
-                    {myCatalog.map((item) => (
-                      <div key={item.id} className="catalog-card">
+          <div className="catalog-grid">
+            {myCatalog.map((item) => (
+              <div key={item.id} className="catalog-card">
                         <img src={item.image_url} alt={item.title} />
-                        <h3>{item.title}</h3>
+                <h3>{item.title}</h3>
                         <p className="price">${item.price}</p>
                         <p style={{ color: "#10b981", fontWeight: 600 }}>{item.points_cost} pts</p>
-                        <button
-                          className="btn btn-danger btn-sm"
-                          onClick={() => removeFromCatalog(item.id)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={() => removeFromCatalog(item.id)}
+                >
+                  Remove
+                </button>
               </div>
+            ))}
+          </div>
+                )}
+      </div>
             </>
           )}
 
@@ -961,8 +963,8 @@ export default function SponsorView({ user, onLogout }) {
                       disabled={updatingAccount}
                     >
                       {updatingAccount ? "Updating..." : "Update Email"}
-                    </button>
-                  </div>
+          </button>
+        </div>
                 </div>
 
                 <div className="form-group">

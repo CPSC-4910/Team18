@@ -1,7 +1,7 @@
 // App/frontend/src/components/DriverView.jsx
 
 import React, { useEffect, useState } from "react";
-import { Users, User, Lock, Archive, ShoppingCart, Package, Award, Menu, X, LogOut, Activity, TrendingUp, CheckCircle, XCircle } from "lucide-react";
+import { Users, User, Lock, Archive, ShoppingCart, Package, Award, Menu, X, LogOut, Activity, TrendingUp, CheckCircle, XCircle, AlertCircle, Bell } from "lucide-react";
 
 // Stats Card Component
 const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
@@ -34,12 +34,24 @@ export default function DriverView({ user, onLogout }) {
   const [accountMessage, setAccountMessage] = useState("");
   const [updatingAccount, setUpdatingAccount] = useState(false);
 
+  // Alerts
+  const [alerts, setAlerts] = useState([]);
+  const [loadingAlerts, setLoadingAlerts] = useState(false);
+
   useEffect(() => {
     loadOrganizations();
     loadMyApplications();
     loadMyMemberships();
+    loadAlerts();
     setEditEmail(user.email || "");
   }, [user?.username]);
+
+  // Reload alerts when view changes to dashboard
+  useEffect(() => {
+    if (view === "dashboard") {
+      loadAlerts();
+    }
+  }, [view]);
 
   // ------------------------------------------------------------
   // Load All Organizations
@@ -145,6 +157,55 @@ export default function DriverView({ user, onLogout }) {
     } catch (err) {
       console.error("Error submitting app:", err);
       setSubmitMessage("Server error.");
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Load Alerts
+  // ------------------------------------------------------------
+  async function loadAlerts() {
+    setLoadingAlerts(true);
+    try {
+      const res = await fetch(`/api/driver/alerts/${user.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAlerts(data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load alerts:", err);
+    } finally {
+      setLoadingAlerts(false);
+    }
+  }
+
+  // Mark alert as read
+  async function markAlertAsRead(alertId) {
+    try {
+      const res = await fetch(`/api/driver/alerts/${alertId}/read`, {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        // Update local state
+        setAlerts(prev => prev.map(alert => 
+          alert.id === alertId ? { ...alert, is_read: true } : alert
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to mark alert as read:", err);
+    }
+  }
+
+  // Mark all alerts as read
+  async function markAllAlertsAsRead() {
+    try {
+      const res = await fetch(`/api/driver/alerts/${user.username}/read-all`, {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        setAlerts(prev => prev.map(alert => ({ ...alert, is_read: true })));
+      }
+    } catch (err) {
+      console.error("Failed to mark all alerts as read:", err);
     }
   }
 
@@ -327,6 +388,80 @@ export default function DriverView({ user, onLogout }) {
         <div className="content-area">
           {view === "dashboard" && (
             <>
+              {/* Alerts Section - Always visible and cannot be disabled */}
+              {alerts.filter(a => !a.is_read).length > 0 && (
+                <div className="panel" style={{ 
+                  background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+                  border: "2px solid #f59e0b",
+                  marginBottom: "24px"
+                }}>
+                  <div className="panel-header" style={{ marginBottom: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Bell className="w-5 h-5" style={{ color: "#d97706" }} />
+                      <h2 style={{ color: "#92400e", margin: 0 }}>Important Alerts</h2>
+                      <span style={{ 
+                        background: "#dc2626", 
+                        color: "white", 
+                        padding: "2px 8px", 
+                        borderRadius: "12px", 
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        marginLeft: "8px"
+                      }}>
+                        {alerts.filter(a => !a.is_read).length}
+                      </span>
+                    </div>
+                    <button 
+                      className="btn btn-secondary btn-sm"
+                      onClick={markAllAlertsAsRead}
+                      style={{ fontSize: "12px" }}
+                    >
+                      Mark All as Read
+                    </button>
+                  </div>
+                  <div className="alerts-list">
+                    {alerts.filter(a => !a.is_read).map((alert) => (
+                      <div 
+                        key={alert.id} 
+                        className="alert-item"
+                        style={{
+                          background: "white",
+                          padding: "16px",
+                          borderRadius: "8px",
+                          marginBottom: "12px",
+                          border: "1px solid #fbbf24",
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                              <AlertCircle className="w-5 h-5" style={{ color: "#d97706", flexShrink: 0 }} />
+                              <h3 style={{ margin: 0, color: "#92400e", fontSize: "16px", fontWeight: 600 }}>
+                                Removed from {alert.organization_name}
+                              </h3>
+                            </div>
+                            <p style={{ margin: 0, color: "#78350f", fontSize: "14px", lineHeight: "1.5", marginLeft: "28px" }}>
+                              {alert.message}
+                            </p>
+                            <p style={{ margin: "8px 0 0 28px", color: "#a16207", fontSize: "12px" }}>
+                              {new Date(alert.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => markAlertAsRead(alert.id)}
+                            style={{ marginLeft: "12px", flexShrink: 0 }}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Stats Cards */}
               <div className="stats-grid">
                 <StatsCard
@@ -456,33 +591,50 @@ export default function DriverView({ user, onLogout }) {
           {view === "history" && (
             <div className="panel">
               <div className="panel-header">
-                <h2>My Applications</h2>
+                <h2>Application History</h2>
               </div>
               {apps.length === 0 ? (
                 <div className="empty-state">
                   <Archive className="w-12 h-12" />
-                  <p>No applications yet.</p>
+                  <p>No applications or removals yet.</p>
                 </div>
               ) : (
                 <div className="table-container">
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Organization ID</th>
+                        <th>Organization</th>
                         <th>Status</th>
-                        <th>Applied At</th>
+                        <th>Removed By</th>
+                        <th>Date</th>
                       </tr>
                     </thead>
                     <tbody>
                       {apps.map((app) => (
                         <tr key={app.id}>
-                          <td>{app.organization_id}</td>
                           <td>
-                            <span className={`badge ${app.status === "pending" ? "pending" : app.status === "accepted" ? "accepted" : "denied"}`}>
-                              {app.status}
+                            <strong>{app.organization_name || `Organization ${app.organization_id}`}</strong>
+                          </td>
+                          <td>
+                            <span className={`badge ${
+                              app.status === "pending" ? "pending" : 
+                              app.status === "accepted" || app.status === "approved" ? "accepted" : 
+                              app.status === "removed" ? "removed" : 
+                              "denied"
+                            }`}>
+                              {app.status === "approved" ? "accepted" : app.status}
                             </span>
                           </td>
-                          <td>{new Date(app.applied_at).toLocaleString()}</td>
+                          <td>
+                            {app.type === "removal" && app.removed_by_username ? (
+                              <span style={{ color: "#6b7280", fontSize: "14px" }}>
+                                {app.removed_by_role === "admin" ? "Admin" : "Sponsor"}: <strong>{app.removed_by_username}</strong>
+                              </span>
+                            ) : (
+                              <span style={{ color: "#9ca3af" }}>—</span>
+                            )}
+                          </td>
+                          <td>{new Date(app.applied_at || app.date).toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1064,6 +1216,12 @@ const css = `
 .badge.denied {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.badge.removed {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
 }
 
 .points-badge {

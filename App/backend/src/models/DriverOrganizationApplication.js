@@ -1,6 +1,7 @@
 // backend/src/models/DriverOrganizationApplication.js
 import { DataTypes } from "sequelize";
 import sequelize from "../config/database.js";
+import Organization from "./Organization.js";
 
 const DriverOrganizationApplication = sequelize.define(
   "DriverOrganizationApplication",
@@ -36,5 +37,14 @@ const DriverOrganizationApplication = sequelize.define(
     tableName: "DriverOrganizationApplications",
   }
 );
+
+// Associations
+DriverOrganizationApplication.belongsTo(Organization, {
+  foreignKey: "organization_id",
+});
+
+Organization.hasMany(DriverOrganizationApplication, {
+  foreignKey: "organization_id",
+});
 
 export default DriverOrganizationApplication;
