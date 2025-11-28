@@ -3,8 +3,19 @@ import react from "@vitejs/plugin-react"; // if using React
 
 export default defineConfig({
   plugins: [react()],
+  
   server: {
-    port: 3000,
+    // 1. Host settings for Nginx proxying
+    host: '0.0.0.0', // Listen on all network interfaces
+    allowedHosts: [
+      'team18.cpsc4911.com', 
+      '3.229.166.87' 
+    ],
+    
+    // 2. Your original port setting (CHECK: Should this be 5173 or 3000?)
+    port: 3000, 
+    
+    // 3. Your original API proxy configuration
     proxy: {
       "/api": {
         target: "http://localhost:5000",
@@ -13,4 +24,5 @@ export default defineConfig({
       },
     },
   },
+  // **********************************************
 });
