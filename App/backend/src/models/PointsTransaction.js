@@ -13,8 +13,8 @@ const PointsTransaction = sequelize.define("PointsTransaction", {
   sponsor_username: { type: DataTypes.STRING(50), allowNull: true }, // Who awarded?
   item_id: { type: DataTypes.INTEGER, allowNull: true }, // What was redeemed?
   points: { type: DataTypes.INTEGER, allowNull: false }, // + for award, - for redeem
-  reason: { type: DataTypes.STRING(255) },
-  type: { type: DataTypes.ENUM("award", "redeem"), allowNull: false },
+  reason: { type: DataTypes.STRING(255), allowNull: false },
+  type: { type: DataTypes.ENUM("award", "deduct", "redeem"), allowNull: false },
 }, {
   tableName: "PointsTransaction",
   timestamps: true,

@@ -21,6 +21,8 @@ import "./models/SponsorOrganizationLink.js";
 import "./models/OrganizationCatalog.js";
 import "./models/PointsBalance.js";
 import "./models/PointsTransaction.js";
+import "./models/DriverAlert.js";
+import "./models/DriverPointAlert.js";
 import reportsRouter from "./routes/reports.js";
 
 

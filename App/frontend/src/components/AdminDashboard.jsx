@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Users, Package, Award, Activity, Settings, LogOut, Menu, X, 
   TrendingUp, AlertCircle, ShoppingCart, UserPlus, CheckCircle, 
-  XCircle, Trash2, Download, FileText 
+  XCircle, Trash2, Download, FileText, User, Lock
 } from 'lucide-react';
 
 // Modal Component
@@ -146,6 +146,14 @@ export default function AdminDashboard({ user, onLogout }) {
     username: ""
   });
 
+  // Account Management
+  const [editEmail, setEditEmail] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [accountMessage, setAccountMessage] = useState("");
+  const [updatingAccount, setUpdatingAccount] = useState(false);
+
   // Stats
   const [stats, setStats] = useState({
     totalDrivers: 0,
@@ -165,7 +173,10 @@ export default function AdminDashboard({ user, onLogout }) {
     if (activeTab === "sponsors") fetchSponsors();
     if (activeTab === "reports") loadAllTransactions();
     if (activeTab === "catalog") loadCatalog(searchTerm);
-  }, [activeTab]);
+    if (activeTab === "settings") {
+      setEditEmail(user?.email || "");
+    }
+  }, [activeTab, user]);
 
   // ===== Data Loaders =====
   const loadStats = async () => {
@@ -267,18 +278,30 @@ export default function AdminDashboard({ user, onLogout }) {
 
   // ===== User Management =====
   const handleDeleteUser = async (username, role) => {
-    if (!confirm(`Are you sure you want to delete ${role} '${username}'?`)) return;
+    if (!confirm(`Are you sure you want to delete ${role} '${username}'? This action cannot be undone.`)) return;
+    
+    setLoading(true);
     try {
       const response = await fetch(`/api/users/${username}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Failed to delete user");
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to delete user");
+      }
+      
+      // Update local state
       if (role === "driver") {
         setDrivers((prev) => prev.filter((u) => u.username !== username));
       } else {
         setSponsors((prev) => prev.filter((u) => u.username !== username));
       }
-      alert(`✅ ${role} '${username}' deleted successfully.`);
+      
+      alert(`✅ ${data.message || `${role} '${username}' deleted successfully.`}`);
     } catch (err) {
-      alert(`❌ ${err.message}`);
+      console.error("Error deleting user:", err);
+      alert(`❌ ${err.message || "Failed to delete user. Please try again."}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -395,6 +418,91 @@ export default function AdminDashboard({ user, onLogout }) {
       return matchesType && matchesUsername && matchesStartDate && matchesEndDate;
     });
   };
+
+  // ===== Account Management =====
+  async function updateEmail() {
+    if (!editEmail || editEmail === user?.email) {
+      setAccountMessage("✗ Please enter a new email address.");
+      return;
+    }
+
+    setUpdatingAccount(true);
+    setAccountMessage("");
+
+    try {
+      const res = await fetch("/api/users/update-email", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user.username,
+          newEmail: editEmail,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setAccountMessage("✓ Email updated successfully!");
+        // Update local user object
+        const updatedUser = { ...user, email: editEmail };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+      } else {
+        setAccountMessage(`✗ ${data.error || "Failed to update email"}`);
+      }
+    } catch (err) {
+      setAccountMessage("✗ Server error");
+    } finally {
+      setUpdatingAccount(false);
+    }
+  }
+
+  async function updatePassword() {
+    setAccountMessage("");
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setAccountMessage("✗ All password fields are required.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setAccountMessage("✗ New password must be at least 8 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setAccountMessage("✗ New passwords do not match.");
+      return;
+    }
+
+    setUpdatingAccount(true);
+
+    try {
+      const res = await fetch("/api/users/update-password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user.username,
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setAccountMessage("✓ Password updated successfully!");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        setAccountMessage(`✗ ${data.error || "Failed to update password"}`);
+      }
+    } catch (err) {
+      setAccountMessage("✗ Server error");
+    } finally {
+      setUpdatingAccount(false);
+    }
+  }
 
   // ===== Render Functions =====
   const renderOverview = () => {
@@ -829,9 +937,107 @@ export default function AdminDashboard({ user, onLogout }) {
         {activeTab === "settings" && (
           <div className="content-area">
             <div className="panel">
-              <h2>Settings</h2>
-              <p>Settings panel coming soon...</p>
+              <h2><User className="w-5 h-5" style={{ display: "inline", marginRight: "8px" }} /> Personal Information</h2>
+              
+              <div className="form-group">
+                <label className="form-label">Username</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={user?.username || ""}
+                  disabled
+                  style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+                />
+                <p className="form-help">Username cannot be changed</p>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Email Address</label>
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <input
+                    type="email"
+                    className="form-input"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    disabled={updatingAccount}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={updateEmail}
+                    disabled={updatingAccount}
+                  >
+                    {updatingAccount ? "Updating..." : "Update Email"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Role</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={user?.role || ""}
+                  disabled
+                  style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+                />
+              </div>
             </div>
+
+            <div className="panel">
+              <h2><Lock className="w-5 h-5" style={{ display: "inline", marginRight: "8px" }} /> Change Password</h2>
+
+              <div className="form-group">
+                <label className="form-label">Current Password</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  disabled={updatingAccount}
+                  placeholder="Enter current password"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">New Password</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={updatingAccount}
+                  placeholder="At least 8 characters"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Confirm New Password</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={updatingAccount}
+                  placeholder="Re-enter new password"
+                />
+              </div>
+
+              <button
+                className="btn btn-primary"
+                onClick={updatePassword}
+                disabled={updatingAccount}
+              >
+                {updatingAccount ? "Updating..." : "Update Password"}
+              </button>
+            </div>
+
+            {accountMessage && (
+              <div className={`alert ${accountMessage.includes("✓") ? "alert-success" : "alert-error"}`}>
+                {accountMessage.includes("✓") ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                <p>{accountMessage}</p>
+              </div>
+            )}
           </div>
         )}
       </main>
