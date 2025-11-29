@@ -349,4 +349,65 @@ router.patch("/api/sponsor/driver/:username", async (req, res) => {
   }
 });
 
+// POST /api/sponsor/create-sponsor - Sponsor creates a new sponsor account
+router.post("/api/sponsor/create-sponsor", async (req, res) => {
+  console.log("[CREATE SPONSOR] Route hit:", req.method, req.path);
+  console.log("[CREATE SPONSOR] Request body:", req.body);
+  try {
+    const { username, email, password } = req.body;
+    
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: "Username, email, and password are required" });
+    }
+    
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+    
+    // Check if username or email already exists
+    const existingUser = await User.findOne({
+      where: {
+        [Op.or]: [
+          { username },
+          { email }
+        ]
+      }
+    });
+    
+    if (existingUser) {
+      return res.status(409).json({ error: "Username or email already exists" });
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create sponsor user
+    const newSponsor = await User.create({
+      username,
+      email,
+      password: hashedPassword,
+      role: "sponsor",
+      created_at: new Date(),
+    });
+    
+    res.status(201).json({
+      message: "Sponsor created successfully",
+      sponsor: {
+        username: newSponsor.username,
+        email: newSponsor.email,
+        role: newSponsor.role
+      }
+    });
+  } catch (err) {
+    console.error("Error creating sponsor:", err);
+    res.status(500).json({ error: "Failed to create sponsor" });
+  }
+});
+
 export default router;

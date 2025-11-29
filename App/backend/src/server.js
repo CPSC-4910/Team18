@@ -131,6 +131,12 @@ app.use("/api/organizations", organizationsRouter);
 app.use("/api/points", pointsRouter);
 
 // Sponsor routes (invite removed)
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/sponsor")) {
+    console.log(`[SPONSOR ROUTER] ${req.method} ${req.path}`);
+  }
+  next();
+});
 app.use(sponsorRouter);
 
 // Driver routes

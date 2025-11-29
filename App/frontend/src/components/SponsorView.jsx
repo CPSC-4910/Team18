@@ -87,6 +87,12 @@ export default function SponsorView({ user, onLogout }) {
   const [accountMessage, setAccountMessage] = useState("");
   const [updatingAccount, setUpdatingAccount] = useState(false);
 
+  // Sponsor Management
+  const [showAddSponsorModal, setShowAddSponsorModal] = useState(false);
+  const [newSponsor, setNewSponsor] = useState({ username: "", email: "", password: "" });
+  const [sponsorFormError, setSponsorFormError] = useState("");
+  const [sponsorFormSuccess, setSponsorFormSuccess] = useState("");
+
   // Reports
   const [reportData, setReportData] = useState([]);
   const [loadingReport, setLoadingReport] = useState(false);
@@ -344,6 +350,42 @@ export default function SponsorView({ user, onLogout }) {
       setDriverFormError("Failed to load driver details");
     } finally {
       setLoadingDrivers(false);
+    }
+  }
+
+  // Create new sponsor
+  async function handleCreateSponsor() {
+    setSponsorFormError("");
+    setSponsorFormSuccess("");
+    if (!newSponsor.username || !newSponsor.email || !newSponsor.password) {
+      setSponsorFormError("All fields are required.");
+      return;
+    }
+    if (newSponsor.password.length < 8) {
+      setSponsorFormError("Password must be at least 8 characters.");
+      return;
+    }
+    setUpdatingAccount(true);
+    try {
+      const res = await fetch("/api/sponsor/create-sponsor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newSponsor),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSponsorFormSuccess(`Sponsor '${data.sponsor?.username || newSponsor.username}' created successfully!`);
+        setTimeout(() => {
+          setShowAddSponsorModal(false);
+          setNewSponsor({ username: "", email: "", password: "" });
+        }, 1500);
+      } else {
+        setSponsorFormError(data.error || "Failed to create sponsor");
+      }
+    } catch (err) {
+      setSponsorFormError("Server error");
+    } finally {
+      setUpdatingAccount(false);
     }
   }
 
@@ -1595,6 +1637,22 @@ export default function SponsorView({ user, onLogout }) {
                   <p>{accountMessage}</p>
                 </div>
               )}
+
+              <div className="panel" style={{ marginTop: "24px", borderTop: "2px solid #e5e7eb", paddingTop: "24px" }}>
+                <div className="panel-header">
+                  <h2><UserPlus className="w-5 h-5" style={{ display: "inline", marginRight: "8px" }} /> Create New Sponsor</h2>
+                </div>
+                <p style={{ color: "#6b7280", marginBottom: "20px", fontSize: "14px" }}>
+                  Create a new sponsor account. Sponsors are self-managed and do not require an application process.
+                </p>
+                <button
+                  onClick={() => setShowAddSponsorModal(true)}
+                  className="btn btn-primary"
+                  disabled={updatingAccount}
+                >
+                  <UserPlus className="w-5 h-5" /> Create New Sponsor
+                </button>
+              </div>
             </>
           )}
         </div>
@@ -1800,6 +1858,107 @@ export default function SponsorView({ user, onLogout }) {
                   disabled={loadingDrivers || !editingDriver}
                 >
                   {loadingDrivers ? "Updating..." : "Update Driver"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Sponsor Modal */}
+      {showAddSponsorModal && (
+        <div className="modal-overlay" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowAddSponsorModal(false);
+            setSponsorFormError("");
+            setSponsorFormSuccess("");
+            setNewSponsor({ username: "", email: "", password: "" });
+          }
+        }}>
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Create New Sponsor</h3>
+              <button
+                onClick={() => {
+                  setShowAddSponsorModal(false);
+                  setSponsorFormError("");
+                  setSponsorFormSuccess("");
+                  setNewSponsor({ username: "", email: "", password: "" });
+                }}
+                className="modal-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Username</label>
+                <input
+                  type="text"
+                  name="username"
+                  className="form-input"
+                  value={newSponsor.username}
+                  onChange={(e) => setNewSponsor({ ...newSponsor, username: e.target.value })}
+                  disabled={updatingAccount}
+                  placeholder="Enter username"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  className="form-input"
+                  value={newSponsor.email}
+                  onChange={(e) => setNewSponsor({ ...newSponsor, email: e.target.value })}
+                  disabled={updatingAccount}
+                  placeholder="Enter email address"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  className="form-input"
+                  value={newSponsor.password}
+                  onChange={(e) => setNewSponsor({ ...newSponsor, password: e.target.value })}
+                  disabled={updatingAccount}
+                  placeholder="Minimum 8 characters"
+                />
+                <p className="form-help">Password must be at least 8 characters long</p>
+              </div>
+              {sponsorFormError && (
+                <div className="alert alert-error">
+                  <XCircle className="w-5 h-5" />
+                  <p>{sponsorFormError}</p>
+                </div>
+              )}
+              {sponsorFormSuccess && (
+                <div className="alert alert-success">
+                  <CheckCircle className="w-5 h-5" />
+                  <p>{sponsorFormSuccess}</p>
+                </div>
+              )}
+              <div className="modal-actions">
+                <button
+                  onClick={() => {
+                    setShowAddSponsorModal(false);
+                    setSponsorFormError("");
+                    setSponsorFormSuccess("");
+                    setNewSponsor({ username: "", email: "", password: "" });
+                  }}
+                  className="btn btn-secondary"
+                  disabled={updatingAccount}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateSponsor}
+                  className="btn btn-primary"
+                  disabled={updatingAccount}
+                >
+                  {updatingAccount ? "Creating..." : "Create Sponsor"}
                 </button>
               </div>
             </div>
