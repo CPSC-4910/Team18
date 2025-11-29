@@ -7,6 +7,7 @@ import OrganizationCatalog from "../models/OrganizationCatalog.js";
 import DriverPointAlert from "../models/DriverPointAlert.js";
 import Organization from "../models/Organization.js";
 import User from "../models/User.js";
+import AuditLog from "../models/AuditLog.js";
 
 const router = express.Router();
 
@@ -94,6 +95,21 @@ router.post("/award", async (req, res) => {
 
     // Commit the transaction
     await t.commit();
+
+    // Log to audit log (outside transaction)
+    try {
+      await AuditLog.create({
+        event_type: "point_change",
+        date: new Date(),
+        driver_username,
+        sponsor_username,
+        organization_id,
+        points: points,
+        reason: reason,
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
 
     res.json({ message: "Points awarded successfully", newBalance: balance.balance });
   } catch (err) {
@@ -183,6 +199,21 @@ router.post("/deduct", async (req, res) => {
     // Commit the transaction
     await t.commit();
 
+    // Log to audit log (outside transaction)
+    try {
+      await AuditLog.create({
+        event_type: "point_change",
+        date: new Date(),
+        driver_username,
+        sponsor_username,
+        organization_id,
+        points: -points,
+        reason: reason,
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
+
     res.json({ message: "Points deducted successfully", newBalance: balance.balance });
   } catch (err) {
     await t.rollback();
@@ -227,6 +258,21 @@ router.post("/redeem", async (req, res) => {
     }, { transaction: t });
 
     await t.commit();
+
+    // Log to audit log (outside transaction)
+    try {
+      await AuditLog.create({
+        event_type: "point_change",
+        date: new Date(),
+        driver_username,
+        sponsor_username: item.sponsor_username,
+        organization_id,
+        points: -cost,
+        reason: `Redeemed item: ${item.title}`,
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
 
     res.json({ 
       message: "Item redeemed successfully!", 
