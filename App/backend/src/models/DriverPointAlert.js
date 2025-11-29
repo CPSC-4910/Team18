@@ -73,3 +73,5 @@ Organization.hasMany(DriverPointAlert, {
 
 export default DriverPointAlert;
 
+
+
