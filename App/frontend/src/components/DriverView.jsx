@@ -1,7 +1,7 @@
 // App/frontend/src/components/DriverView.jsx
 
 import React, { useEffect, useState } from "react";
-import { Users, User, Lock, Archive, ShoppingCart, Package, Award, Menu, X, LogOut, Activity, TrendingUp, CheckCircle, XCircle, AlertCircle, Bell } from "lucide-react";
+import { Users, User, Lock, Archive, ShoppingCart, Package, Award, Menu, X, LogOut, Activity, TrendingUp, CheckCircle, XCircle, AlertCircle, Bell, Receipt, XCircle as XCircleIcon, Edit } from "lucide-react";
 
 // Stats Card Component
 const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
@@ -43,6 +43,14 @@ export default function DriverView({ user, onLogout }) {
   const [loadingPointAlerts, setLoadingPointAlerts] = useState(false);
   const [pointAlertsEnabled, setPointAlertsEnabled] = useState(true);
 
+  // Purchases
+  const [purchases, setPurchases] = useState([]);
+  const [loadingPurchases, setLoadingPurchases] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updatingPurchase, setUpdatingPurchase] = useState(null);
+  const [availableItems, setAvailableItems] = useState([]);
+  const [purchaseMessage, setPurchaseMessage] = useState("");
+
   useEffect(() => {
     loadOrganizations();
     loadMyApplications();
@@ -52,6 +60,12 @@ export default function DriverView({ user, onLogout }) {
     loadPointAlertsPreference();
     setEditEmail(user.email || "");
   }, [user?.username]);
+
+  useEffect(() => {
+    if (view === "purchases") {
+      loadPurchases();
+    }
+  }, [view]);
 
   // Reload alerts when view changes to dashboard
   useEffect(() => {
@@ -345,6 +359,111 @@ export default function DriverView({ user, onLogout }) {
     }
   }
 
+  // -------- PURCHASE MANAGEMENT --------
+  async function loadPurchases() {
+    setLoadingPurchases(true);
+    setPurchaseMessage("");
+    try {
+      const res = await fetch(`/api/driver/purchases/${user.username}`);
+      
+      // Check if response is JSON
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error("Non-JSON response:", text);
+        setPurchaseMessage(`Server error: Received non-JSON response (${res.status})`);
+        return;
+      }
+      
+      const data = await res.json();
+      if (res.ok) {
+        setPurchases(data || []);
+      } else {
+        setPurchaseMessage(data.error || data.details || "Failed to load purchases");
+      }
+    } catch (err) {
+      console.error("Failed to load purchases:", err);
+      setPurchaseMessage(`Server error: ${err.message}`);
+    } finally {
+      setLoadingPurchases(false);
+    }
+  }
+
+  async function cancelPurchase(transactionId) {
+    if (!confirm("Are you sure you want to cancel this purchase? Your points will be refunded.")) {
+      return;
+    }
+
+    setLoadingPurchases(true);
+    setPurchaseMessage("");
+    try {
+      const res = await fetch(`/api/driver/purchases/${transactionId}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPurchaseMessage(`✓ ${data.message || "Purchase cancelled and points refunded"}`);
+        await loadPurchases();
+        await loadMyMemberships(); // Refresh points
+      } else {
+        setPurchaseMessage(`✗ ${data.error || "Failed to cancel purchase"}`);
+      }
+    } catch (err) {
+      console.error("Failed to cancel purchase:", err);
+      setPurchaseMessage("✗ Server error");
+    } finally {
+      setLoadingPurchases(false);
+    }
+  }
+
+  async function openUpdateModal(purchase) {
+    // Load available items from the same organization
+    try {
+      const res = await fetch(`/api/organizations/catalog/${purchase.organization_id}`);
+      const data = await res.json();
+      if (res.ok) {
+        setAvailableItems(data || []);
+        setUpdatingPurchase(purchase);
+        setShowUpdateModal(true);
+      } else {
+        setPurchaseMessage(`✗ Failed to load available items`);
+      }
+    } catch (err) {
+      console.error("Failed to load items:", err);
+      setPurchaseMessage("✗ Server error");
+    }
+  }
+
+  async function updatePurchase(newItemId) {
+    if (!updatingPurchase) return;
+    
+    setLoadingPurchases(true);
+    setPurchaseMessage("");
+    try {
+      const res = await fetch(`/api/driver/purchases/${updatingPurchase.transaction_id}/update`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newItemId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPurchaseMessage(`✓ ${data.message || "Purchase updated successfully"}`);
+        setShowUpdateModal(false);
+        setUpdatingPurchase(null);
+        await loadPurchases();
+        await loadMyMemberships(); // Refresh points
+      } else {
+        setPurchaseMessage(`✗ ${data.error || "Failed to update purchase"}`);
+      }
+    } catch (err) {
+      console.error("Failed to update purchase:", err);
+      setPurchaseMessage("✗ Server error");
+    } finally {
+      setLoadingPurchases(false);
+    }
+  }
+
   // -------- ACCOUNT MANAGEMENT --------
   async function updateEmail() {
     if (!editEmail || editEmail === user.email) {
@@ -408,6 +527,7 @@ export default function DriverView({ user, onLogout }) {
             { id: "dashboard", label: "Dashboard", icon: Activity },
             { id: "history", label: "Applications", icon: Archive },
             { id: "catalog", label: "Catalog", icon: ShoppingCart },
+            { id: "purchases", label: "My Purchases", icon: Receipt },
             { id: "account", label: "Account", icon: User },
           ].map((item) => (
             <button
@@ -444,6 +564,7 @@ export default function DriverView({ user, onLogout }) {
               {view === "dashboard" ? "Dashboard" : 
                view === "history" ? "Application History" :
                view === "catalog" ? `${catalogOrg?.name || "Catalog"}` :
+               view === "purchases" ? "My Purchases" :
                view === "account" ? "Account" : "Dashboard"}
             </h1>
             <p className="page-subtitle">
@@ -858,6 +979,116 @@ export default function DriverView({ user, onLogout }) {
             </div>
           )}
 
+          {view === "purchases" && (
+            <div className="panel">
+              <h2>My Purchases</h2>
+              {purchaseMessage && (
+                <div className={`alert ${purchaseMessage.includes("✓") ? "alert-success" : "alert-error"}`}>
+                  {purchaseMessage.includes("✓") ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                  <p>{purchaseMessage}</p>
+                </div>
+              )}
+              {loadingPurchases ? (
+                <div className="loading-state">
+                  <Activity className="w-8 h-8 animate-spin" />
+                  <p>Loading purchases...</p>
+                </div>
+              ) : purchases.length === 0 ? (
+                <div className="empty-state">
+                  <Package className="w-12 h-12" />
+                  <p>No purchases yet. Start redeeming items from the catalog!</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Organization</th>
+                        <th>Points</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {purchases.map((purchase) => (
+                        <tr key={purchase.id}>
+                          <td>
+                            {purchase.item ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                {purchase.item.image_url && (
+                                  <img 
+                                    src={purchase.item.image_url} 
+                                    alt={purchase.item.title}
+                                    style={{ width: "50px", height: "50px", objectFit: "cover", borderRadius: "8px" }}
+                                  />
+                                )}
+                                <div>
+                                  <div style={{ fontWeight: 600 }}>{purchase.item.title}</div>
+                                  {purchase.item.price && (
+                                    <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                                      ${purchase.item.price} {purchase.item.currency}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <span style={{ color: "#9ca3af" }}>Item no longer available</span>
+                            )}
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 500, color: "#374151" }}>
+                              {purchase.organization_name || "Unknown Organization"}
+                            </div>
+                          </td>
+                          <td className="text-green">{purchase.points} pts</td>
+                          <td>
+                            <span className={`badge ${
+                              purchase.status === "completed" ? "accepted" :
+                              purchase.status === "pending" ? "pending" :
+                              "denied"
+                            }`}>
+                              {purchase.status || "completed"}
+                            </span>
+                          </td>
+                          <td>{new Date(purchase.created_at).toLocaleDateString()}</td>
+                          <td>
+                            <div className="action-group">
+                              {purchase.status !== "cancelled" && (
+                                <>
+                                  <button
+                                    onClick={() => openUpdateModal(purchase)}
+                                    className="btn btn-secondary btn-sm"
+                                    disabled={loadingPurchases || !purchase.item}
+                                    title="Update purchase"
+                                  >
+                                    <Edit className="w-4 h-4" /> Update
+                                  </button>
+                                  <button
+                                    onClick={() => cancelPurchase(purchase.transaction_id)}
+                                    className="btn btn-danger btn-sm"
+                                    disabled={loadingPurchases}
+                                    title="Cancel purchase and refund points"
+                                  >
+                                    <XCircleIcon className="w-4 h-4" /> Cancel
+                                  </button>
+                                </>
+                              )}
+                              {purchase.status === "cancelled" && (
+                                <span style={{ color: "#9ca3af", fontSize: "14px" }}>Cancelled</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {view === "account" && (
             <>
               <div className="panel">
@@ -954,6 +1185,122 @@ export default function DriverView({ user, onLogout }) {
           )}
         </div>
       </main>
+
+      {/* Update Purchase Modal */}
+      {showUpdateModal && updatingPurchase && (
+        <div className="modal-overlay" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowUpdateModal(false);
+            setUpdatingPurchase(null);
+            setPurchaseMessage("");
+          }
+        }}>
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Update Purchase</h3>
+              <button
+                onClick={() => {
+                  setShowUpdateModal(false);
+                  setUpdatingPurchase(null);
+                  setPurchaseMessage("");
+                }}
+                className="modal-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Current Item</label>
+                <div style={{ padding: "12px", background: "#f3f4f6", borderRadius: "8px" }}>
+                  {updatingPurchase.item ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      {updatingPurchase.item.image_url && (
+                        <img 
+                          src={updatingPurchase.item.image_url} 
+                          alt={updatingPurchase.item.title}
+                          style={{ width: "40px", height: "40px", objectFit: "cover", borderRadius: "6px" }}
+                        />
+                      )}
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{updatingPurchase.item.title}</div>
+                        <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                          {updatingPurchase.points} points
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ color: "#9ca3af" }}>Item no longer available</span>
+                  )}
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Select New Item</label>
+                {availableItems.length === 0 ? (
+                  <p style={{ color: "#9ca3af" }}>No items available</p>
+                ) : (
+                  <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: "8px" }}>
+                    {availableItems.map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => updatePurchase(item.id)}
+                        style={{
+                          padding: "12px",
+                          borderBottom: "1px solid #e5e7eb",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          transition: "background 0.2s"
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = "#f3f4f6"}
+                        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                      >
+                        {item.image_url && (
+                          <img 
+                            src={item.image_url} 
+                            alt={item.title}
+                            style={{ width: "50px", height: "50px", objectFit: "cover", borderRadius: "6px" }}
+                          />
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600 }}>{item.title}</div>
+                          <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                            {item.points_cost} points
+                            {item.price && ` • $${item.price} ${item.currency}`}
+                          </div>
+                        </div>
+                        {item.id === updatingPurchase.item_id && (
+                          <CheckCircle className="w-5 h-5" style={{ color: "#16a34a" }} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {purchaseMessage && (
+                <div className={`alert ${purchaseMessage.includes("✓") ? "alert-success" : "alert-error"}`}>
+                  {purchaseMessage.includes("✓") ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                  <p>{purchaseMessage}</p>
+                </div>
+              )}
+              <div className="modal-actions">
+                <button
+                  onClick={() => {
+                    setShowUpdateModal(false);
+                    setUpdatingPurchase(null);
+                    setPurchaseMessage("");
+                  }}
+                  className="btn btn-secondary"
+                  disabled={loadingPurchases}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{css}</style>
     </div>
@@ -1620,5 +1967,138 @@ const css = `
   .stats-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== MODALS ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease-out;
+  position: relative;
+  margin: auto;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 32px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  border-radius: 20px 20px 0 0;
+}
+
+.modal-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-title::before {
+  content: "";
+  width: 4px;
+  height: 28px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 2px;
+}
+
+.modal-close {
+  background: #f3f4f6;
+  border: none;
+  color: #6b7280;
+  padding: 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+
+.modal-close:hover {
+  background: #e5e7eb;
+  color: #374151;
+  transform: rotate(90deg);
+}
+
+.modal-body {
+  padding: 32px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.modal-actions .btn {
+  flex: 1;
+  padding: 14px 24px;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: all 0.2s;
+  font-size: 15px;
+}
+
+.modal-actions .btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  color: white;
+}
+
+.modal-actions .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+.modal-actions .btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
+.modal-actions .btn-secondary:hover:not(:disabled) {
+  background: #e5e7eb;
 }
 `;

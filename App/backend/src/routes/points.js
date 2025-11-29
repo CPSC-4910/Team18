@@ -255,6 +255,7 @@ router.post("/redeem", async (req, res) => {
       points: -cost, // Note: negative number
       reason: `Redeemed item: ${item.title}`,
       type: "redeem",
+      status: "pending", // New purchases start as pending
     }, { transaction: t });
 
     await t.commit();
