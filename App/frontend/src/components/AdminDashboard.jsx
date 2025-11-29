@@ -118,6 +118,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showAddSponsorModal, setShowAddSponsorModal] = useState(false);
+  const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   
   // Data states
   const [drivers, setDrivers] = useState([]);
@@ -141,10 +142,13 @@ export default function AdminDashboard({ user, onLogout }) {
   // Form states
   const [newUser, setNewUser] = useState({ username: "", email: "", password: "" });
   const [newSponsor, setNewSponsor] = useState({ username: "", email: "", password: "" });
+  const [newAdmin, setNewAdmin] = useState({ username: "", email: "", password: "" });
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
   const [sponsorFormError, setSponsorFormError] = useState("");
   const [sponsorFormSuccess, setSponsorFormSuccess] = useState("");
+  const [adminFormError, setAdminFormError] = useState("");
+  const [adminFormSuccess, setAdminFormSuccess] = useState("");
   
   // Catalog states
   const [catalog, setCatalog] = useState([]);
@@ -225,6 +229,7 @@ export default function AdminDashboard({ user, onLogout }) {
     }
     if (activeTab === "drivers") fetchDrivers();
     if (activeTab === "sponsors") fetchSponsors();
+    if (activeTab === "admins") fetchAdmins();
     if (activeTab === "reports") {
       loadAllTransactions();
     }
@@ -635,8 +640,10 @@ export default function AdminDashboard({ user, onLogout }) {
       // Update local state
       if (role === "driver") {
         setDrivers((prev) => prev.filter((u) => u.username !== username));
-      } else {
+      } else if (role === "sponsor") {
         setSponsors((prev) => prev.filter((u) => u.username !== username));
+      } else if (role === "admin") {
+        setAdmins((prev) => prev.filter((u) => u.username !== username));
       }
       
       alert(`✅ ${data.message || `${role} '${username}' deleted successfully.`}`);
@@ -707,6 +714,42 @@ export default function AdminDashboard({ user, onLogout }) {
       }
     } catch (err) {
       setSponsorFormError("Server error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddAdmin = async () => {
+    setAdminFormError("");
+    setAdminFormSuccess("");
+    if (!newAdmin.username || !newAdmin.email || !newAdmin.password) {
+      setAdminFormError("All fields are required.");
+      return;
+    }
+    if (newAdmin.password.length < 8) {
+      setAdminFormError("Password must be at least 8 characters.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newAdmin, role: "admin" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminFormSuccess(`Admin '${data.user?.username || newAdmin.username}' created!`);
+        fetchAdmins();
+        setTimeout(() => {
+          setShowAddAdminModal(false);
+          setNewAdmin({ username: "", email: "", password: "" });
+        }, 1200);
+      } else {
+        setAdminFormError(data.error || "Failed to create admin");
+      }
+    } catch (err) {
+      setAdminFormError("Server error");
     } finally {
       setLoading(false);
     }
@@ -1060,6 +1103,9 @@ export default function AdminDashboard({ user, onLogout }) {
       <div className="panel">
         <div className="panel-header">
           <h2>Admins Management</h2>
+          <button onClick={() => setShowAddAdminModal(true)} className="btn btn-primary">
+            <UserPlus className="w-5 h-5" /> Add Admin
+          </button>
         </div>
         {admins.length === 0 ? (
           <div className="empty-state">
@@ -2408,6 +2454,7 @@ export default function AdminDashboard({ user, onLogout }) {
         {activeTab === "overview" && renderOverview()}
         {activeTab === "drivers" && renderDrivers()}
         {activeTab === "sponsors" && renderSponsors()}
+        {activeTab === "admins" && renderAdmins()}
         {activeTab === "reports" && renderReports()}
         {activeTab === "catalog" && renderCatalog()}
         {activeTab === "settings" && (
@@ -2550,6 +2597,23 @@ export default function AdminDashboard({ user, onLogout }) {
           formError={sponsorFormError}
           formSuccess={sponsorFormSuccess}
           roleLabel="Sponsor"
+        />
+      )}
+
+      {showAddAdminModal && (
+        <AddUserModal
+          onClose={() => {
+            setShowAddAdminModal(false);
+            setAdminFormError("");
+            setAdminFormSuccess("");
+          }}
+          newUser={newAdmin}
+          handleInputChange={(e) => setNewAdmin({ ...newAdmin, [e.target.name]: e.target.value })}
+          handleAddUser={handleAddAdmin}
+          loading={loading}
+          formError={adminFormError}
+          formSuccess={adminFormSuccess}
+          roleLabel="Admin"
         />
       )}
 
