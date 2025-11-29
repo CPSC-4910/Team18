@@ -18,6 +18,8 @@ import {
   Activity,
   ShoppingCart,
   Trash2,
+  FileText,
+  Download,
 } from "lucide-react";
 
 // Stats Card Component
@@ -70,6 +72,15 @@ export default function SponsorView({ user, onLogout }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [accountMessage, setAccountMessage] = useState("");
   const [updatingAccount, setUpdatingAccount] = useState(false);
+
+  // Reports
+  const [reportData, setReportData] = useState([]);
+  const [loadingReport, setLoadingReport] = useState(false);
+  const [reportFilters, setReportFilters] = useState({
+    driver_username: "all",
+    startDate: "",
+    endDate: "",
+  });
 
   // UI view
   const [view, setView] = useState("dashboard");
@@ -280,6 +291,101 @@ export default function SponsorView({ user, onLogout }) {
       console.error("Failed to load points:", err);
     }
   }
+
+  // -------- REPORTS --------
+  async function loadReport() {
+    if (!activeOrg) {
+      alert("Please select an organization first.");
+      return;
+    }
+
+    setLoadingReport(true);
+    try {
+      const params = new URLSearchParams({
+        organization_id: activeOrg.id.toString(),
+        driver_username: reportFilters.driver_username || "all",
+      });
+
+      if (reportFilters.startDate) {
+        params.append("startDate", reportFilters.startDate);
+      }
+      if (reportFilters.endDate) {
+        params.append("endDate", reportFilters.endDate);
+      }
+
+      const res = await fetch(`/api/reports/sponsor/driver-points?${params}`);
+      const data = await res.json();
+
+      if (res.ok) {
+        setReportData(data || []);
+      } else {
+        alert(data.error || "Failed to load report");
+      }
+    } catch (err) {
+      console.error("Failed to load report:", err);
+      alert("Server error while loading report");
+    } finally {
+      setLoadingReport(false);
+    }
+  }
+
+  function exportReportToCSV() {
+    if (reportData.length === 0) {
+      alert("No data to export");
+      return;
+    }
+
+    const headers = ["Driver Name", "Total Points", "Point Change", "Date", "Sponsor", "Reason", "Type"];
+    const rows = [];
+
+    reportData.forEach((driver) => {
+      if (driver.transactions.length === 0) {
+        // Include drivers with no transactions
+        rows.push([
+          driver.driver_username,
+          driver.total_points,
+          "",
+          "",
+          "",
+          "",
+          "",
+        ]);
+      } else {
+        driver.transactions.forEach((trans) => {
+          rows.push([
+            driver.driver_username,
+            driver.total_points,
+            trans.points > 0 ? `+${trans.points}` : trans.points.toString(),
+            new Date(trans.date).toLocaleString(),
+            trans.sponsor_username || "N/A",
+            trans.reason || "",
+            trans.type,
+          ]);
+        });
+      }
+    });
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `driver-points-report-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Load drivers when view changes to reports
+  useEffect(() => {
+    if (view === "reports" && activeOrg) {
+      loadDrivers(activeOrg.id);
+      loadReport();
+    }
+  }, [view, activeOrg?.id]);
 
   async function awardPoints() {
     if (!selectedDriver || !pointsToAward || !activeOrg) {
@@ -577,6 +683,7 @@ export default function SponsorView({ user, onLogout }) {
             { id: "applications", label: "Applications", icon: Users },
             { id: "catalog", label: "Catalog", icon: ShoppingCart },
             { id: "points", label: "Award Points", icon: Award },
+            { id: "reports", label: "Reports", icon: FileText },
             { id: "account", label: "Account", icon: User },
           ].map((item) => (
             <button
@@ -603,10 +710,11 @@ export default function SponsorView({ user, onLogout }) {
         <header className="page-header">
           <div>
             <h1 className="page-title">
-              {view === "dashboard" ? "Dashboard" : 
+              {               view === "dashboard" ? "Dashboard" : 
                view === "applications" ? "Applications" :
                view === "catalog" ? "Catalog" :
                view === "points" ? "Award Points" :
+               view === "reports" ? "Driver Points Report" :
                view === "account" ? "Account" : "Dashboard"}
             </h1>
             <p className="page-subtitle">
@@ -1054,6 +1162,147 @@ export default function SponsorView({ user, onLogout }) {
                 )}
       </div>
             </>
+          )}
+
+          {view === "reports" && (
+            <div className="panel">
+              <div className="panel-header">
+                <h2><FileText className="w-5 h-5" style={{ display: "inline", marginRight: "8px" }} /> Driver Points Report</h2>
+                <button onClick={exportReportToCSV} className="btn btn-secondary" disabled={reportData.length === 0}>
+                  <Download className="w-4 h-4" style={{ marginRight: "8px" }} />
+                  Export CSV
+                </button>
+              </div>
+
+              {!activeOrg ? (
+                <div className="empty-state">
+                  <FileText className="w-12 h-12" />
+                  <p>Please select an organization to view reports.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="filter-section" style={{ marginBottom: "24px", padding: "20px", background: "#f9fafb", borderRadius: "8px" }}>
+                    <h3 style={{ marginBottom: "16px", fontSize: "16px", fontWeight: 600 }}>Filters</h3>
+                    
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "16px" }}>
+                      <div className="form-group">
+                        <label className="form-label">Driver</label>
+                        <select
+                          className="form-input"
+                          value={reportFilters.driver_username}
+                          onChange={(e) => setReportFilters({ ...reportFilters, driver_username: e.target.value })}
+                        >
+                          <option value="all">All Drivers</option>
+                          {drivers.map((d) => (
+                            <option key={d.driver_username} value={d.driver_username}>
+                              {d.driver_username}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Start Date</label>
+                        <input
+                          type="date"
+                          className="form-input"
+                          value={reportFilters.startDate}
+                          onChange={(e) => setReportFilters({ ...reportFilters, startDate: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">End Date</label>
+                        <input
+                          type="date"
+                          className="form-input"
+                          value={reportFilters.endDate}
+                          onChange={(e) => setReportFilters({ ...reportFilters, endDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <button className="btn btn-primary" onClick={loadReport} disabled={loadingReport}>
+                      {loadingReport ? "Loading..." : "Generate Report"}
+                    </button>
+                  </div>
+
+                  {loadingReport ? (
+                    <div className="loading-state">
+                      <Activity className="w-8 h-8 animate-spin" />
+                      <p>Loading report...</p>
+                    </div>
+                  ) : reportData.length === 0 ? (
+                    <div className="empty-state">
+                      <FileText className="w-12 h-12" />
+                      <p>No data found. Adjust your filters and try again.</p>
+                    </div>
+                  ) : (
+                    <div className="table-container">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Driver Name</th>
+                            <th>Total Points</th>
+                            <th>Point Change</th>
+                            <th>Date</th>
+                            <th>Sponsor</th>
+                            <th>Reason</th>
+                            <th>Type</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.map((driver) => {
+                            if (driver.transactions.length === 0) {
+                              return (
+                                <tr key={driver.driver_username}>
+                                  <td><strong>{driver.driver_username}</strong></td>
+                                  <td>{driver.total_points}</td>
+                                  <td colSpan="5" style={{ color: "#9ca3af", fontStyle: "italic" }}>
+                                    No transactions in selected date range
+                                  </td>
+                                </tr>
+                              );
+                            }
+                            return driver.transactions.map((trans, idx) => (
+                              <tr key={`${driver.driver_username}-${trans.id}-${idx}`}>
+                                {idx === 0 && (
+                                  <>
+                                    <td rowSpan={driver.transactions.length}>
+                                      <strong>{driver.driver_username}</strong>
+                                    </td>
+                                    <td rowSpan={driver.transactions.length}>
+                                      <span style={{ fontWeight: 600, color: "#3b82f6" }}>
+                                        {driver.total_points}
+                                      </span>
+                                    </td>
+                                  </>
+                                )}
+                                <td style={{ color: trans.points > 0 ? "#10b981" : "#dc2626", fontWeight: 600 }}>
+                                  {trans.points > 0 ? `+${trans.points}` : trans.points}
+                                </td>
+                                <td>{new Date(trans.date).toLocaleString()}</td>
+                                <td>{trans.sponsor_username || "N/A"}</td>
+                                <td>{trans.reason || "—"}</td>
+                                <td>
+                                  <span className={`badge ${
+                                    trans.type === "award" ? "accepted" :
+                                    trans.type === "deduct" ? "denied" :
+                                    "pending"
+                                  }`}>
+                                    {trans.type}
+                                  </span>
+                                </td>
+                              </tr>
+                            ));
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           )}
 
           {view === "account" && (
