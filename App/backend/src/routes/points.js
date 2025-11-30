@@ -6,6 +6,7 @@ import PointsBalance from "../models/PointsBalance.js";
 import PointsTransaction from "../models/PointsTransaction.js";
 import OrganizationCatalog from "../models/OrganizationCatalog.js";
 import DriverPointAlert from "../models/DriverPointAlert.js";
+import DriverOrderAlert from "../models/DriverOrderAlert.js";
 import Organization from "../models/Organization.js";
 import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
@@ -395,6 +396,62 @@ router.post("/checkout", async (req, res) => {
     await order.update({ status: "completed" }, { transaction: t });
 
     await t.commit();
+
+    // Create order alert if driver has order alerts enabled (outside transaction)
+    try {
+      const driver = await User.findByPk(driver_username);
+      if (driver && driver.order_alerts_enabled) {
+        // Get organization name
+        const organization = await Organization.findByPk(organization_id);
+        
+        // Fetch all catalog items for the order
+        const itemIds = orderItems.map(oi => oi.item_id);
+        const catalogItems = await OrganizationCatalog.findAll({
+          where: { id: { [Op.in]: itemIds } }
+        });
+        
+        // Create a map for quick lookup
+        const catalogMap = {};
+        for (const item of catalogItems) {
+          catalogMap[item.id] = item;
+        }
+        
+        // Create summary of items
+        const itemSummaries = [];
+        for (const orderItem of orderItems) {
+          const catalogItem = catalogMap[orderItem.item_id];
+          if (catalogItem) {
+            itemSummaries.push(`${catalogItem.title} (Qty: ${orderItem.quantity})`);
+          } else {
+            itemSummaries.push(`Item #${orderItem.item_id} (Qty: ${orderItem.quantity})`);
+          }
+        }
+        const orderSummary = itemSummaries.join(", ");
+
+        await DriverOrderAlert.create({
+          driver_username,
+          organization_id,
+          organization_name: organization ? organization.name : "Unknown Organization",
+          order_id: order.id,
+          total_points: totalPoints,
+          item_count: orderItems.length,
+          order_summary: orderSummary,
+          is_read: false,
+        });
+        
+        console.log(`[ORDER ALERT] Created alert for driver ${driver_username}, order #${order.id}`);
+      } else {
+        console.log(`[ORDER ALERT] Skipped - driver ${driver_username} has order_alerts_enabled: ${driver?.order_alerts_enabled}`);
+      }
+    } catch (alertErr) {
+      // If table doesn't exist, just log a warning (don't fail the order)
+      if (alertErr.name === 'SequelizeDatabaseError' && alertErr.parent && alertErr.parent.code === 'ER_NO_SUCH_TABLE') {
+        console.warn("Warning: DriverOrderAlert table doesn't exist. Please run the SQL script to create it.");
+      } else {
+        console.error("Warning: Failed to create order alert:", alertErr.message);
+        console.error("Alert error stack:", alertErr.stack);
+      }
+    }
 
     // Log to audit log (outside transaction)
     try {

@@ -9,6 +9,7 @@ import PointsTransaction from "../models/PointsTransaction.js";
 import OrganizationCatalog from "../models/OrganizationCatalog.js";
 import DriverAlert from "../models/DriverAlert.js";
 import DriverPointAlert from "../models/DriverPointAlert.js";
+import DriverOrderAlert from "../models/DriverOrderAlert.js";
 import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
 import Order from "../models/Order.js";
@@ -198,6 +199,75 @@ router.patch("/point-alerts-preference/:username", async (req, res) => {
     res.json({ message: "Preference updated", point_alerts_enabled: user.point_alerts_enabled });
   } catch (err) {
     console.error("Error updating point alerts preference:", err);
+    res.status(500).json({ error: "Failed to update preference" });
+  }
+});
+
+// GET /api/driver/order-alerts/:username - Get all order alerts for a driver
+router.get("/order-alerts/:username", async (req, res) => {
+  try {
+    const alerts = await DriverOrderAlert.findAll({
+      where: { driver_username: req.params.username },
+      order: [["created_at", "DESC"]],
+    });
+    res.json(alerts);
+  } catch (err) {
+    // If table doesn't exist, return empty array instead of error
+    if (err.name === 'SequelizeDatabaseError' && err.parent && err.parent.code === 'ER_NO_SUCH_TABLE') {
+      console.warn("DriverOrderAlert table doesn't exist yet. Returning empty array.");
+      return res.json([]);
+    }
+    console.error("Error fetching driver order alerts:", err);
+    res.status(500).json({ error: "Failed to fetch order alerts" });
+  }
+});
+
+// PATCH /api/driver/order-alerts/:alertId/read - Mark order alert as read
+router.patch("/order-alerts/:alertId/read", async (req, res) => {
+  try {
+    const alert = await DriverOrderAlert.findByPk(req.params.alertId);
+    if (!alert) {
+      return res.status(404).json({ error: "Alert not found" });
+    }
+    await alert.update({ is_read: true });
+    res.json({ message: "Alert marked as read" });
+  } catch (err) {
+    // If table doesn't exist, return success (no-op)
+    if (err.name === 'SequelizeDatabaseError' && err.parent && err.parent.code === 'ER_NO_SUCH_TABLE') {
+      console.warn("DriverOrderAlert table doesn't exist yet.");
+      return res.json({ message: "Alert marked as read" });
+    }
+    console.error("Error marking order alert as read:", err);
+    res.status(500).json({ error: "Failed to mark alert as read" });
+  }
+});
+
+// GET /api/driver/order-alerts-preference/:username - Get order alerts preference
+router.get("/order-alerts-preference/:username", async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.username);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ order_alerts_enabled: user.order_alerts_enabled ?? true });
+  } catch (err) {
+    console.error("Error fetching order alerts preference:", err);
+    res.status(500).json({ error: "Failed to fetch preference" });
+  }
+});
+
+// PATCH /api/driver/order-alerts-preference/:username - Update order alerts preference
+router.patch("/order-alerts-preference/:username", async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.username);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const { order_alerts_enabled } = req.body;
+    await user.update({ order_alerts_enabled: order_alerts_enabled ?? true });
+    res.json({ message: "Preference updated", order_alerts_enabled: user.order_alerts_enabled });
+  } catch (err) {
+    console.error("Error updating order alerts preference:", err);
     res.status(500).json({ error: "Failed to update preference" });
   }
 });

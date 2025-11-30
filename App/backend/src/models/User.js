@@ -73,6 +73,12 @@ const User = sequelize.define("User", {
     allowNull: false,
     defaultValue: true,
   },
+
+  order_alerts_enabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: true,
+  },
 }, {
   tableName: "users",
   timestamps: false,

@@ -47,6 +47,11 @@ export default function DriverView({ user, onLogout }) {
   const [loadingPointAlerts, setLoadingPointAlerts] = useState(false);
   const [pointAlertsEnabled, setPointAlertsEnabled] = useState(true);
 
+  // Order Alerts
+  const [orderAlerts, setOrderAlerts] = useState([]);
+  const [loadingOrderAlerts, setLoadingOrderAlerts] = useState(false);
+  const [orderAlertsEnabled, setOrderAlertsEnabled] = useState(true);
+
   // Orders (purchases)
   const [purchases, setPurchases] = useState([]); // Now stores orders
   const [loadingPurchases, setLoadingPurchases] = useState(false);
@@ -62,6 +67,8 @@ export default function DriverView({ user, onLogout }) {
     loadAlerts();
     loadPointAlerts();
     loadPointAlertsPreference();
+    loadOrderAlerts();
+    loadOrderAlertsPreference();
     setEditEmail(user.email || "");
   }, [user?.username]);
 
@@ -76,6 +83,7 @@ export default function DriverView({ user, onLogout }) {
     if (view === "dashboard") {
       loadAlerts();
       loadPointAlerts();
+      loadOrderAlerts();
     }
   }, [view]);
 
@@ -302,6 +310,71 @@ export default function DriverView({ user, onLogout }) {
     }
   }
 
+  // Load Order Alerts
+  async function loadOrderAlerts() {
+    setLoadingOrderAlerts(true);
+    try {
+      const res = await fetch(`/api/driver/order-alerts/${user.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOrderAlerts(data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load order alerts:", err);
+    } finally {
+      setLoadingOrderAlerts(false);
+    }
+  }
+
+  // Load order alerts preference
+  async function loadOrderAlertsPreference() {
+    try {
+      const res = await fetch(`/api/driver/order-alerts-preference/${user.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOrderAlertsEnabled(data.order_alerts_enabled ?? true);
+      }
+    } catch (err) {
+      console.error("Failed to load order alerts preference:", err);
+    }
+  }
+
+  // Mark order alert as read
+  async function markOrderAlertAsRead(alertId) {
+    try {
+      const res = await fetch(`/api/driver/order-alerts/${alertId}/read`, {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        setOrderAlerts(prev => prev.map(alert => 
+          alert.id === alertId ? { ...alert, is_read: true } : alert
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to mark order alert as read:", err);
+    }
+  }
+
+  // Toggle order alerts preference
+  async function toggleOrderAlertsPreference() {
+    const newValue = !orderAlertsEnabled;
+    try {
+      const res = await fetch(`/api/driver/order-alerts-preference/${user.username}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_alerts_enabled: newValue }),
+      });
+      if (res.ok) {
+        setOrderAlertsEnabled(newValue);
+      } else {
+        alert("Failed to update preference");
+      }
+    } catch (err) {
+      console.error("Failed to update order alerts preference:", err);
+      alert("Server error");
+    }
+  }
+
   // ------------------------------------------------------------
   // Load Organization Catalog
   // ------------------------------------------------------------
@@ -444,6 +517,7 @@ export default function DriverView({ user, onLogout }) {
         loadMyMemberships(); // Refresh points
         // Always reload purchases to show the new order
         loadPurchases();
+        loadOrderAlerts(); // Reload order alerts to show the new alert
       } else {
         alert(`✗ ${data.error || "Failed to checkout order"}`);
       }
@@ -763,6 +837,76 @@ export default function DriverView({ user, onLogout }) {
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => markAlertAsRead(alert.id)}
+                            style={{ marginLeft: "12px", flexShrink: 0 }}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Order Alerts Section - Only shown if enabled */}
+              {orderAlertsEnabled && orderAlerts.filter(a => !a.is_read).length > 0 && (
+                <div className="panel" style={{ 
+                  background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+                  border: "2px solid #f59e0b",
+                  marginBottom: "24px"
+                }}>
+                  <div className="panel-header" style={{ marginBottom: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Package className="w-5 h-5" style={{ color: "#d97706" }} />
+                      <h2 style={{ color: "#92400e", margin: 0 }}>Order Placed</h2>
+                      <span style={{ 
+                        background: "#f59e0b", 
+                        color: "white", 
+                        padding: "2px 8px", 
+                        borderRadius: "12px", 
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        marginLeft: "8px"
+                      }}>
+                        {orderAlerts.filter(a => !a.is_read).length}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="alerts-list">
+                    {orderAlerts.filter(a => !a.is_read).map((alert) => (
+                      <div 
+                        key={alert.id} 
+                        className="alert-item"
+                        style={{
+                          background: "white",
+                          padding: "16px",
+                          borderRadius: "8px",
+                          marginBottom: "12px",
+                          border: "1px solid #fbbf24",
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                              <Package className="w-5 h-5" style={{ color: "#f59e0b", flexShrink: 0 }} />
+                              <h3 style={{ margin: 0, color: "#92400e", fontSize: "16px", fontWeight: 600 }}>
+                                Order #{alert.order_id} - {alert.total_points} points
+                              </h3>
+                            </div>
+                            <p style={{ margin: 0, color: "#78350f", fontSize: "14px", lineHeight: "1.5", marginLeft: "28px" }}>
+                              <strong>Organization:</strong> {alert.organization_name}
+                            </p>
+                            <p style={{ margin: "4px 0 0 28px", color: "#78350f", fontSize: "14px", lineHeight: "1.5" }}>
+                              <strong>Items ({alert.item_count}):</strong> {alert.order_summary || "N/A"}
+                            </p>
+                            <p style={{ margin: "8px 0 0 28px", color: "#f59e0b", fontSize: "12px" }}>
+                              {new Date(alert.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => markOrderAlertAsRead(alert.id)}
                             style={{ marginLeft: "12px", flexShrink: 0 }}
                           >
                             Dismiss
@@ -1465,6 +1609,28 @@ export default function DriverView({ user, onLogout }) {
                       />
                       <span style={{ fontWeight: 600, color: pointAlertsEnabled ? "#10b981" : "#6b7280" }}>
                         {pointAlertsEnabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: "#f9fafb", borderRadius: "8px" }}>
+                    <div>
+                      <label className="form-label" style={{ marginBottom: "4px" }}>Order Alerts</label>
+                      <p className="form-help" style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
+                        Receive notifications when you place an order
+                      </p>
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={orderAlertsEnabled}
+                        onChange={toggleOrderAlertsPreference}
+                        style={{ width: "20px", height: "20px", cursor: "pointer", marginRight: "8px" }}
+                      />
+                      <span style={{ fontWeight: 600, color: orderAlertsEnabled ? "#10b981" : "#6b7280" }}>
+                        {orderAlertsEnabled ? "Enabled" : "Disabled"}
                       </span>
                     </label>
                   </div>
