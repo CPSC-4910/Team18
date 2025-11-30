@@ -26,6 +26,8 @@ import "./models/PointsTransaction.js";
 import "./models/DriverAlert.js";
 import "./models/DriverPointAlert.js";
 import "./models/AuditLog.js";
+import "./models/Order.js";
+import "./models/OrderItem.js";
 import reportsRouter from "./routes/reports.js";
 
 

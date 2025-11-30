@@ -11,6 +11,8 @@ import DriverAlert from "../models/DriverAlert.js";
 import DriverPointAlert from "../models/DriverPointAlert.js";
 import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
+import Order from "../models/Order.js";
+import OrderItem from "../models/OrderItem.js";
 import bcrypt from "bcrypt";
 
 const router = express.Router();
@@ -200,7 +202,88 @@ router.patch("/point-alerts-preference/:username", async (req, res) => {
   }
 });
 
-// GET /api/driver/purchases/:username - Get all purchases (redemption transactions) for a driver
+// GET /api/driver/orders/:username - Get all orders for a driver
+router.get("/orders/:username", async (req, res) => {
+  try {
+    const { username } = req.params;
+    
+    console.log(`[ORDERS] Fetching orders for driver: ${username}`);
+    
+    // Get all orders for this driver
+    const orders = await Order.findAll({
+      where: { driver_username: username },
+      include: [{
+        model: OrderItem,
+        as: "items",
+        include: [{
+          model: OrganizationCatalog,
+          as: "item",
+          attributes: ["id", "title", "image_url", "price", "currency", "points_cost", "item_url", "sponsor_username"]
+        }]
+      }],
+      order: [["created_at", "DESC"]],
+    });
+
+    console.log(`[ORDERS] Found ${orders.length} orders`);
+
+    if (orders.length === 0) {
+      return res.json([]);
+    }
+
+    // Get organization IDs
+    const orgIds = [...new Set(orders.map(o => o.organization_id).filter(id => id !== null))];
+    
+    // Fetch organizations
+    const organizations = await Organization.findAll({
+      where: { id: { [Op.in]: orgIds } },
+      attributes: ["id", "name"]
+    });
+
+    const orgMap = {};
+    for (const org of organizations) {
+      orgMap[org.id] = org;
+    }
+
+    // Format orders with items and organization
+    const formattedOrders = orders.map(order => {
+      const organization = orgMap[order.organization_id];
+      
+      return {
+        id: order.id,
+        order_id: order.id,
+        organization_id: order.organization_id,
+        organization_name: organization ? organization.name : null,
+        total_points: order.total_points,
+        status: order.status || "completed",
+        created_at: order.created_at,
+        items: order.items ? order.items.map(orderItem => ({
+          id: orderItem.id,
+          item_id: orderItem.item_id,
+          quantity: orderItem.quantity,
+          points_cost: orderItem.points_cost,
+          item: orderItem.item ? {
+            title: orderItem.item.title,
+            image_url: orderItem.item.image_url,
+            price: orderItem.item.price,
+            currency: orderItem.item.currency,
+            points_cost: orderItem.item.points_cost,
+            item_url: orderItem.item.item_url,
+            sponsor_username: orderItem.item.sponsor_username
+          } : null
+        })) : []
+      };
+    });
+
+    console.log(`[ORDERS] Returning ${formattedOrders.length} orders`);
+    res.json(formattedOrders);
+  } catch (err) {
+    console.error("Error fetching driver orders:", err);
+    console.error("Error stack:", err.stack);
+    res.status(500).json({ error: "Failed to fetch orders", details: err.message });
+  }
+});
+
+// GET /api/driver/purchases/:username - Get all purchases (redemption transactions) for a driver (DEPRECATED - use orders)
 router.get("/purchases/:username", async (req, res) => {
   try {
     const { username } = req.params;
@@ -387,39 +470,41 @@ router.get("/purchases/:username", async (req, res) => {
   }
 });
 
-// POST /api/driver/purchases/:transactionId/cancel - Cancel a purchase and refund points
-router.post("/purchases/:transactionId/cancel", async (req, res) => {
-  const { transactionId } = req.params;
+// POST /api/driver/orders/:orderId/cancel - Cancel an order and refund points
+router.post("/orders/:orderId/cancel", async (req, res) => {
+  const { orderId } = req.params;
   const t = await sequelize.transaction();
   
   try {
-    // Get the transaction
-    const transaction = await PointsTransaction.findByPk(transactionId, { transaction: t });
+    // Get the order with items
+    const order = await Order.findByPk(orderId, {
+      include: [{
+        model: OrderItem,
+        as: "items",
+        include: [{
+          model: OrganizationCatalog,
+          as: "item"
+        }]
+      }],
+      transaction: t
+    });
     
-    if (!transaction) {
+    if (!order) {
       await t.rollback();
-      return res.status(404).json({ error: "Purchase not found" });
+      return res.status(404).json({ error: "Order not found" });
     }
 
-    if (transaction.type !== "redeem") {
+    if (order.status === "cancelled") {
       await t.rollback();
-      return res.status(400).json({ error: "This transaction is not a purchase" });
+      return res.status(400).json({ error: "This order is already cancelled" });
     }
 
-    if (transaction.status === "cancelled") {
-      await t.rollback();
-      return res.status(400).json({ error: "This purchase is already cancelled" });
-    }
-
-    // Get the item details for audit log
-    const item = await OrganizationCatalog.findByPk(transaction.item_id, { transaction: t });
-    
-    // Refund points (points are negative, so we add them back)
-    const refundAmount = Math.abs(transaction.points);
+    // Refund points
+    const refundAmount = order.total_points;
     const balance = await PointsBalance.findOne({
       where: {
-        driver_username: transaction.driver_username,
-        organization_id: transaction.organization_id
+        driver_username: order.driver_username,
+        organization_id: order.organization_id
       },
       transaction: t
     });
@@ -434,49 +519,207 @@ router.post("/purchases/:transactionId/cancel", async (req, res) => {
     await balance.save({ transaction: t });
 
     // Create a refund transaction
+    const itemTitles = order.items?.map(oi => oi.item?.title || "Item").join(", ") || "Items";
     await PointsTransaction.create({
-      driver_username: transaction.driver_username,
-      organization_id: transaction.organization_id,
-      item_id: transaction.item_id,
+      driver_username: order.driver_username,
+      organization_id: order.organization_id,
       points: refundAmount, // Positive for refund
-      reason: `Refund for cancelled purchase: ${item ? item.title : "Item"}`,
+      reason: `Refund for cancelled order #${order.id}: ${itemTitles}`,
       type: "award", // Refund is treated as an award
       status: "completed"
     }, { transaction: t });
 
-    // Update the original transaction status
-    await transaction.update({ status: "cancelled" }, { transaction: t });
+    // Update the order status
+    await order.update({ status: "cancelled" }, { transaction: t });
 
     await t.commit();
 
     // Log to audit log
     try {
+      const firstItem = order.items?.[0]?.item;
       await AuditLog.create({
         event_type: "point_change",
         date: new Date(),
-        driver_username: transaction.driver_username,
-        sponsor_username: item ? item.sponsor_username : null,
-        organization_id: transaction.organization_id,
+        driver_username: order.driver_username,
+        sponsor_username: firstItem ? firstItem.sponsor_username : null,
+        organization_id: order.organization_id,
         points: refundAmount,
-        reason: `Refund for cancelled purchase: ${item ? item.title : "Item"}`,
+        reason: `Refund for cancelled order #${order.id}`,
       });
     } catch (auditErr) {
       console.error("Warning: Failed to create audit log:", auditErr.message);
     }
 
     res.json({
-      message: "Purchase cancelled and points refunded",
+      message: "Order cancelled and points refunded",
       newBalance: balance.balance,
       refundAmount
     });
   } catch (err) {
     await t.rollback();
-    console.error("Error cancelling purchase:", err);
-    res.status(500).json({ error: "Failed to cancel purchase" });
+    console.error("Error cancelling order:", err);
+    res.status(500).json({ error: "Failed to cancel order" });
   }
 });
 
-// PATCH /api/driver/purchases/:transactionId/update - Update a purchase (change item)
+// PATCH /api/driver/orders/:orderId/update - Add more items to an existing order
+router.patch("/orders/:orderId/update", async (req, res) => {
+  const { orderId } = req.params;
+  const { items } = req.body; // items: [{item_id, quantity}]
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "No items provided to add" });
+  }
+
+  const t = await sequelize.transaction();
+  try {
+    // Get the existing order
+    const order = await Order.findByPk(orderId, {
+      include: [{
+        model: OrderItem,
+        as: "items"
+      }],
+      transaction: t
+    });
+
+    if (!order) {
+      await t.rollback();
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (order.status === "cancelled") {
+      await t.rollback();
+      return res.status(400).json({ error: "Cannot update a cancelled order" });
+    }
+
+    // Get the user's balance
+    const balance = await PointsBalance.findOne({
+      where: {
+        driver_username: order.driver_username,
+        organization_id: order.organization_id
+      },
+      transaction: t
+    });
+
+    if (!balance) {
+      await t.rollback();
+      return res.status(404).json({ error: "Points balance not found" });
+    }
+
+    // Get all new items and calculate additional cost
+    const itemIds = items.map(i => i.item_id);
+    const catalogItems = await OrganizationCatalog.findAll({
+      where: { id: { [Op.in]: itemIds } },
+      transaction: t
+    });
+
+    if (catalogItems.length !== itemIds.length) {
+      await t.rollback();
+      return res.status(400).json({ error: "One or more items not found" });
+    }
+
+    // Create a map for quick lookup
+    const itemMap = {};
+    for (const item of catalogItems) {
+      itemMap[item.id] = item;
+    }
+
+    // Calculate additional points needed
+    let additionalPoints = 0;
+    const newOrderItems = [];
+
+    for (const cartItem of items) {
+      const catalogItem = itemMap[cartItem.item_id];
+      if (!catalogItem) {
+        await t.rollback();
+        return res.status(400).json({ error: `Item ${cartItem.item_id} not found` });
+      }
+
+      const quantity = cartItem.quantity || 1;
+      const itemTotal = catalogItem.points_cost * quantity;
+      additionalPoints += itemTotal;
+
+      // Check if item already exists in order
+      const existingOrderItem = order.items?.find(oi => oi.item_id === catalogItem.id);
+      
+      if (existingOrderItem) {
+        // Update quantity
+        existingOrderItem.quantity += quantity;
+        await existingOrderItem.save({ transaction: t });
+      } else {
+        // Create new order item
+        newOrderItems.push({
+          order_id: order.id,
+          item_id: catalogItem.id,
+          quantity: quantity,
+          points_cost: catalogItem.points_cost
+        });
+      }
+    }
+
+    // Check if user can afford the additional items
+    if (balance.balance < additionalPoints) {
+      await t.rollback();
+      return res.status(400).json({ 
+        error: `Insufficient points. Need ${additionalPoints} additional points but only have ${balance.balance}.` 
+      });
+    }
+
+    // Create new order items
+    for (const orderItem of newOrderItems) {
+      await OrderItem.create(orderItem, { transaction: t });
+    }
+
+    // Update order total
+    order.total_points += additionalPoints;
+    await order.save({ transaction: t });
+
+    // Deduct points
+    balance.balance -= additionalPoints;
+    await balance.save({ transaction: t });
+
+    // Create transaction record
+    await PointsTransaction.create({
+      driver_username: order.driver_username,
+      organization_id: order.organization_id,
+      points: -additionalPoints,
+      reason: `Updated order #${order.id} - added ${items.length} item(s)`,
+      type: "redeem",
+      status: "pending"
+    }, { transaction: t });
+
+    await t.commit();
+
+    // Log to audit log
+    try {
+      const firstItem = catalogItems[0];
+      await AuditLog.create({
+        event_type: "point_change",
+        date: new Date(),
+        driver_username: order.driver_username,
+        sponsor_username: firstItem ? firstItem.sponsor_username : null,
+        organization_id: order.organization_id,
+        points: -additionalPoints,
+        reason: `Updated order #${order.id} - added items`,
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
+
+    res.json({
+      message: "Order updated successfully!",
+      newBalance: balance.balance,
+      additionalPoints: additionalPoints,
+      newTotal: order.total_points
+    });
+  } catch (err) {
+    await t.rollback();
+    console.error("Error updating order:", err);
+    res.status(500).json({ error: "Failed to update order", details: err.message });
+  }
+});
+
+// PATCH /api/driver/purchases/:transactionId/update - Update a purchase (change item) - DEPRECATED
 router.patch("/purchases/:transactionId/update", async (req, res) => {
   const { transactionId } = req.params;
   const { newItemId } = req.body;

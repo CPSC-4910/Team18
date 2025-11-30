@@ -1,6 +1,7 @@
 // backend/src/routes/points.js
 import express from "express";
 import sequelize from "../config/database.js";
+import { Op } from "sequelize";
 import PointsBalance from "../models/PointsBalance.js";
 import PointsTransaction from "../models/PointsTransaction.js";
 import OrganizationCatalog from "../models/OrganizationCatalog.js";
@@ -8,6 +9,8 @@ import DriverPointAlert from "../models/DriverPointAlert.js";
 import Organization from "../models/Organization.js";
 import User from "../models/User.js";
 import AuditLog from "../models/AuditLog.js";
+import Order from "../models/Order.js";
+import OrderItem from "../models/OrderItem.js";
 
 const router = express.Router();
 
@@ -284,6 +287,141 @@ router.post("/redeem", async (req, res) => {
     await t.rollback();
     console.error("Redeem item error:", err);
     res.status(500).json({ error: "Failed to redeem item" });
+  }
+});
+
+// POST /api/points/checkout - Driver checks out cart and creates an order
+router.post("/checkout", async (req, res) => {
+  const { driver_username, organization_id, items } = req.body; // items: [{item_id, quantity}]
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "Cart is empty" });
+  }
+
+  const t = await sequelize.transaction();
+  try {
+    // 1. Get the user's balance
+    const balance = await PointsBalance.findOne({
+      where: { driver_username, organization_id },
+      transaction: t,
+    });
+
+    if (!balance) {
+      await t.rollback();
+      return res.status(404).json({ error: "Points balance not found" });
+    }
+
+    // 2. Get all items and calculate total
+    const itemIds = items.map(i => i.item_id);
+    const catalogItems = await OrganizationCatalog.findAll({
+      where: { id: { [Op.in]: itemIds } },
+      transaction: t,
+    });
+
+    if (catalogItems.length !== itemIds.length) {
+      await t.rollback();
+      return res.status(400).json({ error: "One or more items not found" });
+    }
+
+    // Create a map for quick lookup
+    const itemMap = {};
+    for (const item of catalogItems) {
+      itemMap[item.id] = item;
+    }
+
+    // Calculate total points
+    let totalPoints = 0;
+    const orderItems = [];
+    
+    for (const cartItem of items) {
+      const catalogItem = itemMap[cartItem.item_id];
+      if (!catalogItem) {
+        await t.rollback();
+        return res.status(400).json({ error: `Item ${cartItem.item_id} not found` });
+      }
+      
+      const quantity = cartItem.quantity || 1;
+      const itemTotal = catalogItem.points_cost * quantity;
+      totalPoints += itemTotal;
+      
+      orderItems.push({
+        item_id: catalogItem.id,
+        quantity: quantity,
+        points_cost: catalogItem.points_cost,
+        catalogItem: catalogItem, // Store for later use
+      });
+    }
+
+    // 3. Check if user can afford it
+    if (balance.balance < totalPoints) {
+      await t.rollback();
+      return res.status(400).json({ 
+        error: `Insufficient points. Need ${totalPoints} points but only have ${balance.balance}.` 
+      });
+    }
+
+    // 4. Create the order
+    const order = await Order.create({
+      driver_username,
+      organization_id,
+      total_points: totalPoints,
+      status: "pending",
+    }, { transaction: t });
+
+    // 5. Create order items
+    for (const orderItem of orderItems) {
+      await OrderItem.create({
+        order_id: order.id,
+        item_id: orderItem.item_id,
+        quantity: orderItem.quantity,
+        points_cost: orderItem.points_cost,
+      }, { transaction: t });
+    }
+
+    // 6. Subtract points and log transaction
+    balance.balance -= totalPoints;
+    await balance.save({ transaction: t });
+
+    await PointsTransaction.create({
+      driver_username,
+      organization_id,
+      points: -totalPoints,
+      reason: `Order #${order.id} - ${orderItems.length} item(s)`,
+      type: "redeem",
+      status: "pending",
+    }, { transaction: t });
+
+    // 7. Update order status to completed
+    await order.update({ status: "completed" }, { transaction: t });
+
+    await t.commit();
+
+    // Log to audit log (outside transaction)
+    try {
+      const firstItem = orderItems[0]?.catalogItem;
+      await AuditLog.create({
+        event_type: "point_change",
+        date: new Date(),
+        driver_username,
+        sponsor_username: firstItem ? firstItem.sponsor_username : null,
+        organization_id,
+        points: -totalPoints,
+        reason: `Order #${order.id} - ${orderItems.length} item(s)`,
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
+
+    res.json({ 
+      message: "Order placed successfully!", 
+      orderId: order.id,
+      newBalance: balance.balance,
+      totalPoints: totalPoints,
+    });
+  } catch (err) {
+    await t.rollback();
+    console.error("Checkout error:", err);
+    res.status(500).json({ error: "Failed to checkout order", details: err.message });
   }
 });
 
