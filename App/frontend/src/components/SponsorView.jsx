@@ -38,7 +38,7 @@ const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
   </div>
 );
 
-export default function SponsorView({ user, onLogout }) {
+export default function SponsorView({ user, onLogout, isImpersonated = false, originalAdmin = null, onExitImpersonation = null }) {
   const [profile, setProfile] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -116,6 +116,10 @@ export default function SponsorView({ user, onLogout }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!user || !user.username) {
+      console.error("SponsorView: user or user.username is missing");
+      return;
+    }
     async function load() {
       const me = { name: user.username };
       setProfile(me);
@@ -125,7 +129,7 @@ export default function SponsorView({ user, onLogout }) {
       await loadJoinedOrganizations(me.name);
     }
     load();
-  }, [user.username]);
+  }, [user?.username]);
 
   // Load all available organizations
   async function loadAllOrganizations() {
@@ -1022,8 +1026,45 @@ export default function SponsorView({ user, onLogout }) {
   // -------- DASHBOARD --------
     return (
     <div className="sponsor-dashboard">
+      {/* Impersonation Banner */}
+      {isImpersonated && originalAdmin && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+          color: "white",
+          padding: "12px 24px",
+          zIndex: 10000,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <Shield className="w-5 h-5" />
+            <span style={{ fontWeight: 600 }}>
+              Viewing as <strong>{user.username}</strong> (Admin: {originalAdmin.username})
+            </span>
+          </div>
+          <button
+            onClick={onExitImpersonation}
+            className="btn btn-secondary btn-sm"
+            style={{
+              background: "rgba(255,255,255,0.2)",
+              border: "1px solid rgba(255,255,255,0.3)",
+              color: "white",
+              fontWeight: 600
+            }}
+          >
+            Exit Impersonation
+          </button>
+        </div>
+      )}
+      
       {/* Sidebar */}
-      <aside className={`sidebar ${sidebarOpen ? "open" : "closed"}`}>
+      <aside className={`sidebar ${sidebarOpen ? "open" : "closed"}`} style={isImpersonated ? { marginTop: "48px" } : {}}>
         <div className="sidebar-header">
           {sidebarOpen && <h1>Sponsor Panel</h1>}
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="sidebar-toggle">
@@ -1060,7 +1101,7 @@ export default function SponsorView({ user, onLogout }) {
       </aside>
 
       {/* Main Content */}
-      <main className="main-content">
+      <main className="main-content" style={isImpersonated ? { marginTop: "48px" } : {}}>
         <header className="page-header">
           <div>
             <h1 className="page-title">

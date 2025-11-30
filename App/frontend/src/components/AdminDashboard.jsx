@@ -113,7 +113,7 @@ const StatsCard = ({ icon: Icon, title, value, trend, trendUp }) => (
   </div>
 );
 
-export default function AdminDashboard({ user, onLogout }) {
+export default function AdminDashboard({ user, onLogout, onImpersonateDriver, onImpersonateSponsor }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -1008,6 +1008,15 @@ export default function AdminDashboard({ user, onLogout }) {
                     <td>{d.last_login ? new Date(d.last_login).toLocaleDateString() : "Never"}</td>
                     <td>
                       <div className="action-group">
+                        {onImpersonateDriver && (
+                          <button
+                            onClick={() => onImpersonateDriver(d)}
+                            className="btn btn-primary btn-sm"
+                            title={`View site as ${d.username}`}
+                          >
+                            <User className="w-4 h-4" /> View As
+                          </button>
+                        )}
                         <button
                           onClick={() => fetchUserDetails(d.username)}
                           className="btn btn-secondary btn-sm"
@@ -1073,6 +1082,15 @@ export default function AdminDashboard({ user, onLogout }) {
                     <td>{s.last_login ? new Date(s.last_login).toLocaleDateString() : "Never"}</td>
                     <td>
                       <div className="action-group">
+                        {onImpersonateSponsor && (
+                          <button
+                            onClick={() => onImpersonateSponsor(s)}
+                            className="btn btn-primary btn-sm"
+                            title={`View site as ${s.username}`}
+                          >
+                            <User className="w-4 h-4" /> View As
+                          </button>
+                        )}
                         <button
                           onClick={() => fetchUserDetails(s.username)}
                           className="btn btn-secondary btn-sm"
