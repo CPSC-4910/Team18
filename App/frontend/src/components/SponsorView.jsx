@@ -1,5 +1,4 @@
 // App/frontend/src/components/SponsorView.jsx
-// WITH ACCOUNT MANAGEMENT TAB
 
 import React, { useEffect, useState } from "react";
 import {
@@ -38,7 +37,7 @@ const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
   </div>
 );
 
-export default function SponsorView({ user, onLogout }) {
+export default function SponsorView({ user, onLogout, onAssumeDriver }) {
   const [profile, setProfile] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -111,6 +110,8 @@ export default function SponsorView({ user, onLogout }) {
 
   // UI view
   const [view, setView] = useState("dashboard");
+  const [showAssumeDriverModal, setShowAssumeDriverModal] = useState(false);
+  const [assumingDriverUsername, setAssumingDriverUsername] = useState("");
 
   // Errors
   const [error, setError] = useState("");
@@ -733,6 +734,52 @@ export default function SponsorView({ user, onLogout }) {
     URL.revokeObjectURL(url);
   }
 
+// -------- ASSUME DRIVER CONTROL --------
+  async function assumeDriverControl() {
+    if (!assumingDriverUsername) {
+      alert("Please enter a driver username.");
+      return;
+    }
+
+    // Verify the driver is part of the active organization
+    const driverInOrg = drivers.find(d => d.driver_username === assumingDriverUsername);
+    if (!driverInOrg) {
+      alert(`Driver '${assumingDriverUsername}' is not a member of ${activeOrg.name}.`);
+      return;
+    }
+
+    if (!confirm(`Assume control of driver '${assumingDriverUsername}'? All actions will be performed as this driver.`)) {
+      return;
+    }
+
+    try {
+      // Fetch driver details
+      const res = await fetch(`/api/sponsor/driver/${assumingDriverUsername}?sponsor_username=${profile.name}`);
+      if (!res.ok) {
+        throw new Error("Failed to fetch driver details");
+      }
+      const driverData = await res.json();
+
+      // Create a user object that mimics a driver login
+      const assumedDriverUser = {
+        username: driverData.username,
+        email: driverData.email,
+        role: "driver",
+        isAssumedBySponsor: true,
+        actualSponsor: user.username
+      };
+
+      // Call the parent callback to switch to driver view
+      onAssumeDriver(assumedDriverUser);
+      setShowAssumeDriverModal(false);
+      setAssumingDriverUsername("");
+    } catch (err) {
+      console.error("Error assuming driver control:", err);
+      alert("Failed to assume driver control. Please try again.");
+    }
+  }
+
+
   // Load drivers when view changes to reports
   useEffect(() => {
     if (view === "reports" && activeOrg) {
@@ -1273,8 +1320,18 @@ export default function SponsorView({ user, onLogout }) {
                                 <td>
                                   <div className="action-group">
                                     <button
-                                      onClick={() => openPurchaseForDriver(driver.driver_username)}
+                                      onClick={() => {
+                                        setAssumingDriverUsername(driver.driver_username);
+                                        setShowAssumeDriverModal(true);
+                                      }}
                                       className="btn btn-primary btn-sm"
+                                      title={`Assume control of ${driver.driver_username}`}
+                                    >
+                                      <Shield className="w-4 h-4" /> Assume
+                                    </button>
+                                    <button
+                                      onClick={() => openPurchaseForDriver(driver.driver_username)}
+                                      className="btn btn-secondary btn-sm"
                                       title={`Purchase items for ${driver.driver_username}`}
                                     >
                                       <ShoppingCart className="w-4 h-4" /> Purchase
@@ -1294,7 +1351,7 @@ export default function SponsorView({ user, onLogout }) {
                                       <Trash2 className="w-4 h-4" /> Remove
                                     </button>
                                   </div>
-                                </td>
+                                  </td>
                               </tr>
                             );
                           })}
@@ -2286,7 +2343,87 @@ export default function SponsorView({ user, onLogout }) {
           </div>
         </div>
       )}
+      {/* Assume Driver Control Modal */}
+      {showAssumeDriverModal && (
+        <div className="modal-overlay" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowAssumeDriverModal(false);
+            setAssumingDriverUsername("");
+          }
+        }}>
+          <div className="modal-content" style={{ maxWidth: "500px" }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Assume Driver Control</h3>
+              <button
+                onClick={() => {
+                  setShowAssumeDriverModal(false);
+                  setAssumingDriverUsername("");
+                }}
+                className="modal-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ 
+                background: "#fef3c7", 
+                border: "2px solid #f59e0b", 
+                borderRadius: "12px", 
+                padding: "16px", 
+                marginBottom: "24px",
+                display: "flex",
+                alignItems: "start",
+                gap: "12px"
+              }}>
+                <Shield className="w-6 h-6" style={{ color: "#d97706", flexShrink: 0, marginTop: "2px" }} />
+                <div>
+                  <p style={{ margin: 0, fontWeight: 600, color: "#92400e", marginBottom: "8px" }}>
+                    Important: You are about to assume control
+                  </p>
+                  <p style={{ margin: 0, fontSize: "14px", color: "#78350f", lineHeight: "1.5" }}>
+                    When you assume control of a driver's account, you will be able to view their dashboard 
+                    and perform all actions as if you were that driver. All activities will be recorded 
+                    under the driver's username.
+                  </p>
+                </div>
+              </div>
 
+              <div className="form-group">
+                <label className="form-label">Driver Username</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={assumingDriverUsername}
+                  onChange={(e) => setAssumingDriverUsername(e.target.value)}
+                  placeholder="Enter driver username"
+                  disabled={true}
+                  style={{ background: "#f9fafb" }}
+                />
+                <p className="form-help">This driver must be a member of {activeOrg?.name || "the active organization"}</p>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  onClick={() => {
+                    setShowAssumeDriverModal(false);
+                    setAssumingDriverUsername("");
+                  }}
+                  className="btn btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={assumeDriverControl}
+                  className="btn btn-primary"
+                  disabled={!assumingDriverUsername}
+                >
+                  <Shield className="w-4 h-4" /> Assume Control
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <style>{css}</style>
     </div>
   );
