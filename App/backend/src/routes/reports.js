@@ -556,7 +556,26 @@ router.get("/audit-logs", async (req, res) => {
       limit: 1000, // Limit to prevent huge responses
     });
 
-    res.json(logs);
+    // For password changes, fetch user roles to include in response
+    const logsWithRoles = await Promise.all(logs.map(async (log) => {
+      if (log.event_type === "password_change" && log.username) {
+        try {
+          const User = (await import("../models/User.js")).default;
+          const user = await User.findByPk(log.username);
+          if (user) {
+            return {
+              ...log.toJSON(),
+              user_role: user.role, // Add role to the log
+            };
+          }
+        } catch (err) {
+          console.error("Error fetching user role for audit log:", err);
+        }
+      }
+      return log.toJSON();
+    }));
+
+    res.json(logsWithRoles);
   } catch (err) {
     console.error("Error fetching audit logs:", err);
     res.status(500).json({ error: "Failed to fetch audit logs" });

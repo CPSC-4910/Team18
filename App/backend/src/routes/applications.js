@@ -47,11 +47,25 @@ router.post("/apply", async (req, res) => {
         .json({ msg: "You already have a pending application for this organization. Please wait for a response." });
     }
 
-    await DriverOrganizationApplication.create({
+    const application = await DriverOrganizationApplication.create({
       driver_username,
       organization_id,
       status: "pending",
     });
+
+    // Log application submission to audit log
+    try {
+      await AuditLog.create({
+        event_type: "driver_application",
+        date: new Date(),
+        driver_username,
+        organization_id,
+        status: "pending",
+        reason: "Application submitted",
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
 
     res.json({ msg: "Application submitted successfully." });
   } catch (error) {
@@ -156,7 +170,7 @@ router.get("/by-driver/:username", async (req, res) => {
 // ===========================================
 router.patch("/:id/approve", async (req, res) => {
   try {
-    const { sponsor_username, reason } = req.body;
+    const { sponsor_username, reason } = req.body || {};
     const app = await DriverOrganizationApplication.findByPk(req.params.id);
     if (!app) {
       return res.status(404).json({ error: "Application not found" });
@@ -190,16 +204,21 @@ router.patch("/:id/approve", async (req, res) => {
       });
     }
 
-    // Log to audit log
-    await AuditLog.create({
-      event_type: "driver_application",
-      date: new Date(),
-      driver_username: app.driver_username,
-      sponsor_username: sponsor,
-      organization_id: app.organization_id,
-      status: "accept",
-      reason: reason || "Application approved",
-    });
+    // Log to audit log (non-blocking)
+    try {
+      await AuditLog.create({
+        event_type: "driver_application",
+        date: new Date(),
+        driver_username: app.driver_username,
+        sponsor_username: sponsor,
+        organization_id: app.organization_id,
+        status: "accept",
+        reason: reason || "Application approved",
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+      // Don't fail the request if audit log fails
+    }
 
     return res.json({ message: "Application approved" });
   } catch (err) {
@@ -217,7 +236,7 @@ router.patch("/:id/approve", async (req, res) => {
 // ===========================================
 router.patch("/:id/deny", async (req, res) => {
   try {
-    const { sponsor_username, reason } = req.body;
+    const { sponsor_username, reason } = req.body || {};
     const app = await DriverOrganizationApplication.findByPk(req.params.id);
     if (!app)
       return res.status(404).json({ msg: "Application not found." });
@@ -233,16 +252,21 @@ router.patch("/:id/deny", async (req, res) => {
 
     await app.update({ status: "denied" });
 
-    // Log to audit log
-    await AuditLog.create({
-      event_type: "driver_application",
-      date: new Date(),
-      driver_username: app.driver_username,
-      sponsor_username: sponsor,
-      organization_id: app.organization_id,
-      status: "reject",
-      reason: reason || "Application denied",
-    });
+    // Log to audit log (non-blocking)
+    try {
+      await AuditLog.create({
+        event_type: "driver_application",
+        date: new Date(),
+        driver_username: app.driver_username,
+        sponsor_username: sponsor,
+        organization_id: app.organization_id,
+        status: "reject",
+        reason: reason || "Application denied",
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+      // Don't fail the request if audit log fails
+    }
 
     res.json({ msg: "Application denied." });
   } catch (error) {
@@ -252,3 +276,4 @@ router.patch("/:id/deny", async (req, res) => {
 });
 
 export default router;
+

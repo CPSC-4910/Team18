@@ -269,7 +269,7 @@ router.post("/redeem", async (req, res) => {
         event_type: "point_change",
         date: new Date(),
         driver_username,
-        sponsor_username: item.sponsor_username,
+        sponsor_username: null, // Redemptions don't have a sponsor
         organization_id,
         points: -cost,
         reason: `Redeemed item: ${item.title}`,
@@ -398,12 +398,11 @@ router.post("/checkout", async (req, res) => {
 
     // Log to audit log (outside transaction)
     try {
-      const firstItem = orderItems[0]?.catalogItem;
       await AuditLog.create({
         event_type: "point_change",
         date: new Date(),
         driver_username,
-        sponsor_username: firstItem ? firstItem.sponsor_username : null,
+        sponsor_username: null, // Redemptions don't have a sponsor
         organization_id,
         points: -totalPoints,
         reason: `Order #${order.id} - ${orderItems.length} item(s)`,

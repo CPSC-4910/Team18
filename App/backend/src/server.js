@@ -266,6 +266,21 @@ app.patch("/api/users/:username", async (req, res) => {
     }
 
     console.log(`[UPDATE USER] Applying updates:`, updates);
+    
+    // Log password change if password is being updated
+    if (updates.password) {
+      try {
+        await AuditLog.create({
+          event_type: "password_change",
+          date: new Date(),
+          username: user.username,
+          change_type: "reset", // Admin reset
+        });
+      } catch (auditErr) {
+        console.error("Warning: Failed to create audit log:", auditErr.message);
+      }
+    }
+    
     await user.update(updates);
     
     // Reload user to get updated values

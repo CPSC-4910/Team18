@@ -217,6 +217,11 @@ export default function SponsorView({ user, onLogout }) {
     try {
       const res = await fetch(`/api/applications/${appId}/approve`, {
         method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sponsor_username: profile?.name || null,
+          reason: "Application approved by sponsor",
+        }),
       });
 
       if (res.ok) {
@@ -224,10 +229,12 @@ export default function SponsorView({ user, onLogout }) {
         loadApplications(activeOrg.id);
         loadDrivers(activeOrg.id);
       } else {
-        alert("Error approving application.");
+        const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+        alert(errorData.error || "Error approving application.");
       }
     } catch (err) {
       console.error("Error approving:", err);
+      alert("Error approving application.");
     }
   }
 
@@ -235,16 +242,23 @@ export default function SponsorView({ user, onLogout }) {
     try {
       const res = await fetch(`/api/applications/${appId}/deny`, {
         method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sponsor_username: profile?.name || null,
+          reason: "Application denied by sponsor",
+        }),
       });
 
       if (res.ok) {
         alert("Application denied.");
         loadApplications(activeOrg.id);
       } else {
-        alert("Error denying application.");
+        const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+        alert(errorData.error || "Error denying application.");
       }
     } catch (err) {
       console.error("Error denying:", err);
+      alert("Error denying application.");
     }
   }
 
