@@ -102,6 +102,13 @@ export default function SponsorView({ user, onLogout }) {
     endDate: "",
   });
 
+  // Sponsor Purchase for Driver
+  const [purchaseDriver, setPurchaseDriver] = useState(null); // Selected driver for purchase
+  const [purchaseCart, setPurchaseCart] = useState([]); // Cart items [{item_id, quantity, item}]
+  const [purchaseCatalog, setPurchaseCatalog] = useState([]); // Catalog items for purchase
+  const [loadingPurchaseCatalog, setLoadingPurchaseCatalog] = useState(false);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+
   // UI view
   const [view, setView] = useState("dashboard");
 
@@ -217,6 +224,11 @@ export default function SponsorView({ user, onLogout }) {
     try {
       const res = await fetch(`/api/applications/${appId}/approve`, {
         method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sponsor_username: profile?.name || null,
+          reason: "Application approved by sponsor",
+        }),
       });
 
       if (res.ok) {
@@ -224,10 +236,12 @@ export default function SponsorView({ user, onLogout }) {
         loadApplications(activeOrg.id);
         loadDrivers(activeOrg.id);
       } else {
-        alert("Error approving application.");
+        const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+        alert(errorData.error || "Error approving application.");
       }
     } catch (err) {
       console.error("Error approving:", err);
+      alert("Error approving application.");
     }
   }
 
@@ -235,16 +249,23 @@ export default function SponsorView({ user, onLogout }) {
     try {
       const res = await fetch(`/api/applications/${appId}/deny`, {
         method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sponsor_username: profile?.name || null,
+          reason: "Application denied by sponsor",
+        }),
       });
 
       if (res.ok) {
         alert("Application denied.");
         loadApplications(activeOrg.id);
       } else {
-        alert("Error denying application.");
+        const errorData = await res.json().catch(() => ({ error: "Unknown error" }));
+        alert(errorData.error || "Error denying application.");
       }
     } catch (err) {
       console.error("Error denying:", err);
+      alert("Error denying application.");
     }
   }
 
@@ -499,6 +520,129 @@ export default function SponsorView({ user, onLogout }) {
       setDriverPoints(map);
     } catch (err) {
       console.error("Failed to load points:", err);
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Sponsor Purchase for Driver Functions
+  // ------------------------------------------------------------
+  async function openPurchaseForDriver(driverUsername) {
+    if (!activeOrg) {
+      alert("Please select an organization first.");
+      return;
+    }
+    setPurchaseDriver(driverUsername);
+    setPurchaseCart([]);
+    setShowPurchaseModal(true);
+    await loadPurchaseCatalog();
+  }
+
+  async function loadPurchaseCatalog() {
+    if (!activeOrg) return;
+    setLoadingPurchaseCatalog(true);
+    try {
+      const res = await fetch(`/api/organizations/catalog/${activeOrg.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPurchaseCatalog(data || []);
+      } else {
+        console.error("Failed to load catalog:", res.status, res.statusText);
+      }
+    } catch (err) {
+      console.error("Failed to load catalog:", err);
+    } finally {
+      setLoadingPurchaseCatalog(false);
+    }
+  }
+
+  function addToPurchaseCart(item) {
+    const existingItem = purchaseCart.find(ci => ci.item_id === item.id);
+    if (existingItem) {
+      setPurchaseCart(purchaseCart.map(ci =>
+        ci.item_id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci
+      ));
+    } else {
+      setPurchaseCart([...purchaseCart, { item_id: item.id, quantity: 1, item }]);
+    }
+  }
+
+  function removeFromPurchaseCart(itemId) {
+    setPurchaseCart(purchaseCart.filter(ci => ci.item_id !== itemId));
+  }
+
+  function updatePurchaseCartQuantity(itemId, quantity) {
+    if (quantity <= 0) {
+      removeFromPurchaseCart(itemId);
+    } else {
+      setPurchaseCart(purchaseCart.map(ci =>
+        ci.item_id === itemId ? { ...ci, quantity } : ci
+      ));
+    }
+  }
+
+  function getPurchaseCartTotal() {
+    return purchaseCart.reduce((total, cartItem) => {
+      const item = cartItem.item || purchaseCatalog.find(c => c.id === cartItem.item_id);
+      if (item) {
+        return total + (item.points_cost * cartItem.quantity);
+      }
+      return total;
+    }, 0);
+  }
+
+  function clearPurchaseCart() {
+    setPurchaseCart([]);
+  }
+
+  async function checkoutPurchaseForDriver() {
+    if (!purchaseDriver || !activeOrg || purchaseCart.length === 0) {
+      alert("Please select a driver and add items to cart.");
+      return;
+    }
+
+    const totalPoints = getPurchaseCartTotal();
+    const driverBalance = driverPoints[purchaseDriver] || 0;
+
+    if (driverBalance < totalPoints) {
+      alert(`Insufficient points. Driver needs ${totalPoints} points but only has ${driverBalance}.`);
+      return;
+    }
+
+    if (!confirm(`Purchase ${purchaseCart.length} item(s) for ${purchaseDriver} using ${totalPoints} points?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/points/sponsor-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          driver_username: purchaseDriver,
+          sponsor_username: profile?.name || user.username,
+          organization_id: activeOrg.id,
+          items: purchaseCart.map(cartItem => ({
+            item_id: cartItem.item_id,
+            quantity: cartItem.quantity
+          }))
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert(`✓ ${data.message || "Order placed successfully!"}`);
+        clearPurchaseCart();
+        setShowPurchaseModal(false);
+        setPurchaseDriver(null);
+        // Refresh driver points
+        loadDriverPoints(activeOrg.id);
+        loadDrivers(activeOrg.id);
+      } else {
+        alert(`✗ ${data.error || "Failed to checkout order"}`);
+      }
+    } catch (err) {
+      console.error("Checkout error:", err);
+      alert("✗ Server error");
     }
   }
 
@@ -1128,6 +1272,13 @@ export default function SponsorView({ user, onLogout }) {
                                 <td className="text-green">{driverPoints[driver.driver_username] || 0} pts</td>
                                 <td>
                                   <div className="action-group">
+                                    <button
+                                      onClick={() => openPurchaseForDriver(driver.driver_username)}
+                                      className="btn btn-primary btn-sm"
+                                      title={`Purchase items for ${driver.driver_username}`}
+                                    >
+                                      <ShoppingCart className="w-4 h-4" /> Purchase
+                                    </button>
                                     <button
                                       onClick={() => fetchDriverDetails(driver.driver_username)}
                                       className="btn btn-secondary btn-sm"
@@ -1960,6 +2111,176 @@ export default function SponsorView({ user, onLogout }) {
                 >
                   {updatingAccount ? "Creating..." : "Create Sponsor"}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase Items for Driver Modal */}
+      {showPurchaseModal && purchaseDriver && (
+        <div className="modal-overlay" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowPurchaseModal(false);
+            setPurchaseDriver(null);
+            clearPurchaseCart();
+          }
+        }}>
+          <div className="modal-content" style={{ maxWidth: "900px" }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Purchase Items for {purchaseDriver}</h3>
+              <button
+                onClick={() => {
+                  setShowPurchaseModal(false);
+                  setPurchaseDriver(null);
+                  clearPurchaseCart();
+                }}
+                className="modal-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: "24px", padding: "16px", background: "#f0f9ff", borderRadius: "8px" }}>
+                <p style={{ margin: 0, fontWeight: 600, color: "#1e40af" }}>
+                  Driver Balance: <span style={{ color: "#3b82f6" }}>{driverPoints[purchaseDriver] || 0} points</span>
+                </p>
+                {purchaseCart.length > 0 && (
+                  <p style={{ margin: "8px 0 0 0", fontWeight: 600, color: "#1e40af" }}>
+                    Cart Total: <span style={{ color: getPurchaseCartTotal() > (driverPoints[purchaseDriver] || 0) ? "#ef4444" : "#10b981" }}>
+                      {getPurchaseCartTotal()} points
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              <div style={{ display: "flex", gap: "24px" }}>
+                {/* Catalog */}
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ marginBottom: "16px", fontSize: "18px", fontWeight: 600 }}>Catalog</h4>
+                  {loadingPurchaseCatalog ? (
+                    <p>Loading catalog...</p>
+                  ) : purchaseCatalog.length === 0 ? (
+                    <p>No items in catalog.</p>
+                  ) : (
+                    <div className="catalog-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+                      {purchaseCatalog.map((item) => (
+                        <div key={item.id} className="catalog-card">
+                          {item.image_url && (
+                            <img
+                              src={item.image_url}
+                              alt={item.title}
+                              onError={(e) => { e.target.style.display = "none"; }}
+                            />
+                          )}
+                          <h3>{item.title}</h3>
+                          <div className="price">{item.points_cost} pts</div>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => addToPurchaseCart(item)}
+                            style={{ width: "100%" }}
+                          >
+                            Add to Cart
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Cart */}
+                <div style={{ width: "350px", borderLeft: "1px solid #e5e7eb", paddingLeft: "24px" }}>
+                  <h4 style={{ marginBottom: "16px", fontSize: "18px", fontWeight: 600 }}>Cart ({purchaseCart.length})</h4>
+                  {purchaseCart.length === 0 ? (
+                    <p style={{ color: "#6b7280" }}>Cart is empty</p>
+                  ) : (
+                    <>
+                      <div style={{ maxHeight: "400px", overflowY: "auto", marginBottom: "16px" }}>
+                        {purchaseCart.map((cartItem) => {
+                          const item = cartItem.item || purchaseCatalog.find(c => c.id === cartItem.item_id);
+                          return (
+                            <div key={cartItem.item_id} style={{
+                              padding: "12px",
+                              background: "#f9fafb",
+                              borderRadius: "8px",
+                              marginBottom: "8px"
+                            }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "8px" }}>
+                                <div style={{ flex: 1 }}>
+                                  <p style={{ margin: 0, fontWeight: 600, fontSize: "14px" }}>
+                                    {item ? item.title : `Item #${cartItem.item_id}`}
+                                  </p>
+                                  <p style={{ margin: "4px 0 0 0", fontSize: "12px", color: "#6b7280" }}>
+                                    {item ? `${item.points_cost} pts each` : "N/A"}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => removeFromPurchaseCart(cartItem.item_id)}
+                                  className="btn btn-danger btn-sm"
+                                  style={{ padding: "4px 8px" }}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <button
+                                  onClick={() => updatePurchaseCartQuantity(cartItem.item_id, cartItem.quantity - 1)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: "4px 8px" }}
+                                >
+                                  -
+                                </button>
+                                <span style={{ minWidth: "40px", textAlign: "center", fontWeight: 600 }}>
+                                  {cartItem.quantity}
+                                </span>
+                                <button
+                                  onClick={() => updatePurchaseCartQuantity(cartItem.item_id, cartItem.quantity + 1)}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: "4px 8px" }}
+                                >
+                                  +
+                                </button>
+                                <span style={{ marginLeft: "auto", fontWeight: 600, color: "#3b82f6" }}>
+                                  {item ? (item.points_cost * cartItem.quantity) : 0} pts
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{
+                        padding: "16px",
+                        background: "#f0f9ff",
+                        borderRadius: "8px",
+                        marginBottom: "16px"
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                          <span style={{ fontWeight: 600 }}>Total:</span>
+                          <span style={{ fontWeight: 700, fontSize: "18px", color: "#3b82f6" }}>
+                            {getPurchaseCartTotal()} points
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#6b7280" }}>
+                          <span>Driver Balance:</span>
+                          <span>{driverPoints[purchaseDriver] || 0} points</span>
+                        </div>
+                        {getPurchaseCartTotal() > (driverPoints[purchaseDriver] || 0) && (
+                          <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#ef4444", fontWeight: 600 }}>
+                            Insufficient points!
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={checkoutPurchaseForDriver}
+                        className="btn btn-primary"
+                        disabled={purchaseCart.length === 0 || getPurchaseCartTotal() > (driverPoints[purchaseDriver] || 0)}
+                        style={{ width: "100%" }}
+                      >
+                        Checkout ({getPurchaseCartTotal()} pts)
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           </div>

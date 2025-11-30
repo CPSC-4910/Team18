@@ -1,7 +1,7 @@
 // App/frontend/src/components/DriverView.jsx
 
 import React, { useEffect, useState } from "react";
-import { Users, User, Lock, Archive, ShoppingCart, Package, Award, Menu, X, LogOut, Activity, TrendingUp, CheckCircle, XCircle, AlertCircle, Bell, Receipt, XCircle as XCircleIcon, Edit } from "lucide-react";
+import { Users, User, Lock, Archive, ShoppingCart, Package, Award, Menu, X, LogOut, Activity, TrendingUp, CheckCircle, XCircle, AlertCircle, Bell, Receipt, XCircle as XCircleIcon, Edit, Trash2 } from "lucide-react";
 
 // Stats Card Component
 const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
@@ -29,6 +29,10 @@ export default function DriverView({ user, onLogout }) {
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [view, setView] = useState("dashboard");
 
+  // Cart Management
+  const [cart, setCart] = useState([]); // [{item_id, quantity, item}]
+  const [cartOrg, setCartOrg] = useState(null); // Organization for current cart
+
   // Account Management
   const [editEmail, setEditEmail] = useState("");
   const [accountMessage, setAccountMessage] = useState("");
@@ -43,13 +47,18 @@ export default function DriverView({ user, onLogout }) {
   const [loadingPointAlerts, setLoadingPointAlerts] = useState(false);
   const [pointAlertsEnabled, setPointAlertsEnabled] = useState(true);
 
-  // Purchases
-  const [purchases, setPurchases] = useState([]);
+  // Order Alerts
+  const [orderAlerts, setOrderAlerts] = useState([]);
+  const [loadingOrderAlerts, setLoadingOrderAlerts] = useState(false);
+  const [orderAlertsEnabled, setOrderAlertsEnabled] = useState(true);
+
+  // Orders (purchases)
+  const [purchases, setPurchases] = useState([]); // Now stores orders
   const [loadingPurchases, setLoadingPurchases] = useState(false);
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [updatingPurchase, setUpdatingPurchase] = useState(null);
-  const [availableItems, setAvailableItems] = useState([]);
   const [purchaseMessage, setPurchaseMessage] = useState("");
+  const [showUpdateOrderModal, setShowUpdateOrderModal] = useState(false);
+  const [updatingOrder, setUpdatingOrder] = useState(null);
+  const [orderUpdateItems, setOrderUpdateItems] = useState([]); // Items to add to order
 
   useEffect(() => {
     loadOrganizations();
@@ -58,6 +67,8 @@ export default function DriverView({ user, onLogout }) {
     loadAlerts();
     loadPointAlerts();
     loadPointAlertsPreference();
+    loadOrderAlerts();
+    loadOrderAlertsPreference();
     setEditEmail(user.email || "");
   }, [user?.username]);
 
@@ -72,6 +83,7 @@ export default function DriverView({ user, onLogout }) {
     if (view === "dashboard") {
       loadAlerts();
       loadPointAlerts();
+      loadOrderAlerts();
     }
   }, [view]);
 
@@ -298,6 +310,71 @@ export default function DriverView({ user, onLogout }) {
     }
   }
 
+  // Load Order Alerts
+  async function loadOrderAlerts() {
+    setLoadingOrderAlerts(true);
+    try {
+      const res = await fetch(`/api/driver/order-alerts/${user.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOrderAlerts(data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load order alerts:", err);
+    } finally {
+      setLoadingOrderAlerts(false);
+    }
+  }
+
+  // Load order alerts preference
+  async function loadOrderAlertsPreference() {
+    try {
+      const res = await fetch(`/api/driver/order-alerts-preference/${user.username}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOrderAlertsEnabled(data.order_alerts_enabled ?? true);
+      }
+    } catch (err) {
+      console.error("Failed to load order alerts preference:", err);
+    }
+  }
+
+  // Mark order alert as read
+  async function markOrderAlertAsRead(alertId) {
+    try {
+      const res = await fetch(`/api/driver/order-alerts/${alertId}/read`, {
+        method: "PATCH",
+      });
+      if (res.ok) {
+        setOrderAlerts(prev => prev.map(alert => 
+          alert.id === alertId ? { ...alert, is_read: true } : alert
+        ));
+      }
+    } catch (err) {
+      console.error("Failed to mark order alert as read:", err);
+    }
+  }
+
+  // Toggle order alerts preference
+  async function toggleOrderAlertsPreference() {
+    const newValue = !orderAlertsEnabled;
+    try {
+      const res = await fetch(`/api/driver/order-alerts-preference/${user.username}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_alerts_enabled: newValue }),
+      });
+      if (res.ok) {
+        setOrderAlertsEnabled(newValue);
+      } else {
+        alert("Failed to update preference");
+      }
+    } catch (err) {
+      console.error("Failed to update order alerts preference:", err);
+      alert("Server error");
+    }
+  }
+
   // ------------------------------------------------------------
   // Load Organization Catalog
   // ------------------------------------------------------------
@@ -319,42 +396,133 @@ export default function DriverView({ user, onLogout }) {
   }
 
   // ------------------------------------------------------------
-  // Redeem Item
+  // Cart Management
   // ------------------------------------------------------------
-  async function redeemItem(item) {
-    const points = membershipPoints[catalogOrg.id] || 0;
-    
-    if (points < item.points_cost) {
-      alert(`Insufficient points. You need ${item.points_cost} points but only have ${points}.`);
+  function addToCart(item) {
+    if (!catalogOrg) {
+      alert("Please select an organization first");
       return;
     }
 
-    if (!confirm(`Redeem ${item.title} for ${item.points_cost} points?`)) {
+    // If cart is for a different organization, clear it first
+    if (cartOrg && cartOrg.id !== catalogOrg.id) {
+      if (!confirm("Your cart contains items from a different organization. Clear cart and add this item?")) {
+        return;
+      }
+      setCart([]);
+      setCartOrg(null);
+    }
+
+    // Set cart organization if not set
+    if (!cartOrg) {
+      setCartOrg(catalogOrg);
+    }
+
+    // Check if item already in cart
+    const existingIndex = cart.findIndex(cartItem => cartItem.item_id === item.id);
+    
+    if (existingIndex >= 0) {
+      // Increase quantity
+      const newCart = [...cart];
+      newCart[existingIndex].quantity += 1;
+      setCart(newCart);
+    } else {
+      // Add new item - make sure to store a copy of the item object
+      setCart([...cart, {
+        item_id: item.id,
+        quantity: 1,
+        item: { ...item } // Create a copy to avoid reference issues
+      }]);
+    }
+  }
+
+  function removeFromCart(itemId) {
+    setCart(cart.filter(item => item.item_id !== itemId));
+    if (cart.length === 1) {
+      setCartOrg(null);
+    }
+  }
+
+  function updateCartQuantity(itemId, quantity) {
+    if (quantity <= 0) {
+      removeFromCart(itemId);
+      return;
+    }
+    const newCart = cart.map(item => 
+      item.item_id === itemId ? { ...item, quantity: quantity } : item
+    );
+    setCart(newCart);
+  }
+
+  function clearCart() {
+    setCart([]);
+    setCartOrg(null);
+  }
+
+  function getCartTotal() {
+    if (!cart || cart.length === 0) return 0;
+    try {
+      return cart.reduce((total, cartItem) => {
+        if (!cartItem || !cartItem.item) return total;
+        const pointsCost = cartItem.item.points_cost || 0;
+        const quantity = cartItem.quantity || 1;
+        return total + (pointsCost * quantity);
+      }, 0);
+    } catch (err) {
+      console.error("Error calculating cart total:", err);
+      return 0;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Checkout Cart
+  // ------------------------------------------------------------
+  async function checkoutCart() {
+    if (cart.length === 0) {
+      alert("Your cart is empty!");
+      return;
+    }
+
+    const totalPoints = getCartTotal();
+    const availablePoints = membershipPoints[cartOrg.id] || 0;
+
+    if (availablePoints < totalPoints) {
+      alert(`Insufficient points. You need ${totalPoints} points but only have ${availablePoints}.`);
+      return;
+    }
+
+    if (!confirm(`Checkout ${cart.length} item(s) for ${totalPoints} points?`)) {
       return;
     }
 
     try {
-      const res = await fetch("/api/points/redeem", {
+      const res = await fetch("/api/points/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           driver_username: user.username,
-          itemId: item.id,
-          organization_id: catalogOrg.id,
+          organization_id: cartOrg.id,
+          items: cart.map(cartItem => ({
+            item_id: cartItem.item_id,
+            quantity: cartItem.quantity
+          }))
         }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        alert(`✓ ${data.message || "Item redeemed successfully!"}`);
-        // Reload points
-        loadMyMemberships();
+        alert(`✓ ${data.message || "Order placed successfully!"}`);
+        clearCart();
+        loadMyMemberships(); // Refresh points
+        // Always reload purchases to show the new order
+        loadPurchases();
+        loadOrderAlerts(); // Reload order alerts to show the new alert
       } else {
-        alert(`✗ ${data.error || "Failed to redeem item"}`);
+        alert(`✗ ${data.error || "Failed to checkout order"}`);
       }
     } catch (err) {
-      console.error("Redeem error:", err);
+      console.error("Checkout error:", err);
       alert("✗ Server error");
     }
   }
@@ -364,7 +532,7 @@ export default function DriverView({ user, onLogout }) {
     setLoadingPurchases(true);
     setPurchaseMessage("");
     try {
-      const res = await fetch(`/api/driver/purchases/${user.username}`);
+      const res = await fetch(`/api/driver/orders/${user.username}`);
       
       // Check if response is JSON
       const contentType = res.headers.get("content-type");
@@ -379,25 +547,25 @@ export default function DriverView({ user, onLogout }) {
       if (res.ok) {
         setPurchases(data || []);
       } else {
-        setPurchaseMessage(data.error || data.details || "Failed to load purchases");
+        setPurchaseMessage(data.error || data.details || "Failed to load orders");
       }
     } catch (err) {
-      console.error("Failed to load purchases:", err);
+      console.error("Failed to load orders:", err);
       setPurchaseMessage(`Server error: ${err.message}`);
     } finally {
       setLoadingPurchases(false);
     }
   }
 
-  async function cancelPurchase(transactionId) {
-    if (!confirm("Are you sure you want to cancel this purchase? Your points will be refunded.")) {
+  async function cancelPurchase(orderId) {
+    if (!confirm("Are you sure you want to cancel this order? Your points will be refunded.")) {
       return;
     }
 
     setLoadingPurchases(true);
     setPurchaseMessage("");
     try {
-      const res = await fetch(`/api/driver/purchases/${transactionId}/cancel`, {
+      const res = await fetch(`/api/driver/orders/${orderId}/cancel`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
@@ -417,47 +585,68 @@ export default function DriverView({ user, onLogout }) {
     }
   }
 
-  async function openUpdateModal(purchase) {
-    // Load available items from the same organization
+  // -------- ORDER UPDATE --------
+  async function openUpdateOrderModal(order) {
+    if (order.status === "cancelled") {
+      setPurchaseMessage("✗ Cannot update a cancelled order");
+      return;
+    }
+
+    setUpdatingOrder(order);
+    setOrderUpdateItems([]);
+    setPurchaseMessage("");
+
+    // Load catalog items for the order's organization
     try {
-      const res = await fetch(`/api/organizations/catalog/${purchase.organization_id}`);
-      const data = await res.json();
-      if (res.ok) {
-        setAvailableItems(data || []);
-        setUpdatingPurchase(purchase);
-        setShowUpdateModal(true);
-      } else {
-        setPurchaseMessage(`✗ Failed to load available items`);
+      const res = await fetch(`/api/organizations/catalog/${order.organization_id}`);
+      if (!res.ok) {
+        throw new Error("Failed to load catalog items");
       }
+      const data = await res.json();
+      // Show all items in the catalog (not filtering out items already in the order)
+      setOrderUpdateItems(data || []);
+      setShowUpdateOrderModal(true);
     } catch (err) {
-      console.error("Failed to load items:", err);
-      setPurchaseMessage("✗ Server error");
+      console.error("Failed to load catalog for order update:", err);
+      setPurchaseMessage(`✗ ${err.message || "Failed to load items"}`);
     }
   }
 
-  async function updatePurchase(newItemId) {
-    if (!updatingPurchase) return;
-    
+  async function updateOrder(itemsToAdd) {
+    if (!updatingOrder || !itemsToAdd || itemsToAdd.length === 0) {
+      setPurchaseMessage("✗ Please select at least one item to add");
+      return;
+    }
+
     setLoadingPurchases(true);
     setPurchaseMessage("");
+
     try {
-      const res = await fetch(`/api/driver/purchases/${updatingPurchase.transaction_id}/update`, {
+      const res = await fetch(`/api/driver/orders/${updatingOrder.order_id}/update`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newItemId }),
+        body: JSON.stringify({
+          items: itemsToAdd.map(item => ({
+            item_id: item.id, // Catalog items use 'id' property
+            quantity: item.quantity || 1
+          }))
+        }),
       });
+
       const data = await res.json();
+
       if (res.ok) {
-        setPurchaseMessage(`✓ ${data.message || "Purchase updated successfully"}`);
-        setShowUpdateModal(false);
-        setUpdatingPurchase(null);
+        setPurchaseMessage(`✓ ${data.message || "Order updated successfully!"}`);
+        setShowUpdateOrderModal(false);
+        setUpdatingOrder(null);
+        setOrderUpdateItems([]);
         await loadPurchases();
         await loadMyMemberships(); // Refresh points
       } else {
-        setPurchaseMessage(`✗ ${data.error || "Failed to update purchase"}`);
+        setPurchaseMessage(`✗ ${data.error || "Failed to update order"}`);
       }
     } catch (err) {
-      console.error("Failed to update purchase:", err);
+      console.error("Failed to update order:", err);
       setPurchaseMessage("✗ Server error");
     } finally {
       setLoadingPurchases(false);
@@ -527,6 +716,7 @@ export default function DriverView({ user, onLogout }) {
             { id: "dashboard", label: "Dashboard", icon: Activity },
             { id: "history", label: "Applications", icon: Archive },
             { id: "catalog", label: "Catalog", icon: ShoppingCart },
+            { id: "cart", label: `Cart${cart.length > 0 ? ` (${cart.length})` : ""}`, icon: ShoppingCart },
             { id: "purchases", label: "My Purchases", icon: Receipt },
             { id: "account", label: "Account", icon: User },
           ].map((item) => (
@@ -647,6 +837,76 @@ export default function DriverView({ user, onLogout }) {
                           <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => markAlertAsRead(alert.id)}
+                            style={{ marginLeft: "12px", flexShrink: 0 }}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Order Alerts Section - Only shown if enabled */}
+              {orderAlertsEnabled && orderAlerts.filter(a => !a.is_read).length > 0 && (
+                <div className="panel" style={{ 
+                  background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+                  border: "2px solid #f59e0b",
+                  marginBottom: "24px"
+                }}>
+                  <div className="panel-header" style={{ marginBottom: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Package className="w-5 h-5" style={{ color: "#d97706" }} />
+                      <h2 style={{ color: "#92400e", margin: 0 }}>Order Placed</h2>
+                      <span style={{ 
+                        background: "#f59e0b", 
+                        color: "white", 
+                        padding: "2px 8px", 
+                        borderRadius: "12px", 
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        marginLeft: "8px"
+                      }}>
+                        {orderAlerts.filter(a => !a.is_read).length}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="alerts-list">
+                    {orderAlerts.filter(a => !a.is_read).map((alert) => (
+                      <div 
+                        key={alert.id} 
+                        className="alert-item"
+                        style={{
+                          background: "white",
+                          padding: "16px",
+                          borderRadius: "8px",
+                          marginBottom: "12px",
+                          border: "1px solid #fbbf24",
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                              <Package className="w-5 h-5" style={{ color: "#f59e0b", flexShrink: 0 }} />
+                              <h3 style={{ margin: 0, color: "#92400e", fontSize: "16px", fontWeight: 600 }}>
+                                Order #{alert.order_id} - {alert.total_points} points
+                              </h3>
+                            </div>
+                            <p style={{ margin: 0, color: "#78350f", fontSize: "14px", lineHeight: "1.5", marginLeft: "28px" }}>
+                              <strong>Organization:</strong> {alert.organization_name}
+                            </p>
+                            <p style={{ margin: "4px 0 0 28px", color: "#78350f", fontSize: "14px", lineHeight: "1.5" }}>
+                              <strong>Items ({alert.item_count}):</strong> {alert.order_summary || "N/A"}
+                            </p>
+                            <p style={{ margin: "8px 0 0 28px", color: "#f59e0b", fontSize: "12px" }}>
+                              {new Date(alert.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => markOrderAlertAsRead(alert.id)}
                             style={{ marginLeft: "12px", flexShrink: 0 }}
                           >
                             Dismiss
@@ -957,10 +1217,10 @@ export default function DriverView({ user, onLogout }) {
                       </div>
                       <button
                         className="btn btn-primary btn-full"
-                        onClick={() => redeemItem(item)}
+                        onClick={() => addToCart(item)}
                         disabled={membershipPoints[catalogOrg?.id] < item.points_cost}
                       >
-                        {membershipPoints[catalogOrg?.id] < item.points_cost ? "Insufficient Points" : "Redeem"}
+                        {membershipPoints[catalogOrg?.id] < item.points_cost ? "Insufficient Points" : "Add to Cart"}
                       </button>
                       {item.item_url && (
                         <a 
@@ -979,9 +1239,164 @@ export default function DriverView({ user, onLogout }) {
             </div>
           )}
 
+          {view === "cart" && (
+            <div className="panel">
+              <h2>Shopping Cart</h2>
+              {!cart || cart.length === 0 ? (
+                <div className="empty-state">
+                  <ShoppingCart className="w-12 h-12" />
+                  <p>Your cart is empty. Add items from the catalog!</p>
+                  <button
+                    onClick={() => setView("catalog")}
+                    className="btn btn-primary"
+                    style={{ marginTop: "20px" }}
+                  >
+                    Browse Catalog
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: "24px" }}>
+                    <p style={{ color: "#6b7280", marginBottom: "16px" }}>
+                      Organization: <strong>{cartOrg?.name || "Unknown"}</strong>
+                    </p>
+                    <p style={{ color: "#6b7280" }}>
+                      Available Points: <strong style={{ color: "#10b981" }}>
+                        {membershipPoints[cartOrg?.id] || 0} pts
+                      </strong>
+                    </p>
+                  </div>
+                  <div className="table-container">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Item</th>
+                          <th>Points Each</th>
+                          <th>Quantity</th>
+                          <th>Subtotal</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cart.filter(cartItem => cartItem && cartItem.item_id).map((cartItem) => {
+                          if (!cartItem || !cartItem.item) {
+                            return (
+                              <tr key={cartItem?.item_id || Math.random()}>
+                                <td colSpan={5} style={{ color: "#9ca3af", textAlign: "center" }}>
+                                  Item no longer available
+                                </td>
+                              </tr>
+                            );
+                          }
+                          const pointsCost = cartItem.item.points_cost || 0;
+                          const quantity = cartItem.quantity || 1;
+                          return (
+                            <tr key={cartItem.item_id}>
+                              <td>
+                                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                  {cartItem.item.image_url && (
+                                    <img 
+                                      src={cartItem.item.image_url} 
+                                      alt={cartItem.item.title || "Item"}
+                                      style={{ width: "50px", height: "50px", objectFit: "cover", borderRadius: "8px" }}
+                                      onError={(e) => { e.target.style.display = 'none'; }}
+                                    />
+                                  )}
+                                  <div>
+                                    <div style={{ fontWeight: 600 }}>{cartItem.item.title || "Unknown Item"}</div>
+                                    {cartItem.item.price && (
+                                      <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                                        ${cartItem.item.price} {cartItem.item.currency || ""}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="text-green">{pointsCost} pts</td>
+                              <td>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <button
+                                    onClick={() => updateCartQuantity(cartItem.item_id, quantity - 1)}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ minWidth: "32px", padding: "4px 8px" }}
+                                  >
+                                    -
+                                  </button>
+                                  <span style={{ minWidth: "40px", textAlign: "center", fontWeight: 600 }}>
+                                    {quantity}
+                                  </span>
+                                  <button
+                                    onClick={() => updateCartQuantity(cartItem.item_id, quantity + 1)}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ minWidth: "32px", padding: "4px 8px" }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="text-green" style={{ fontWeight: 600 }}>
+                                {pointsCost * quantity} pts
+                              </td>
+                              <td>
+                                <button
+                                  onClick={() => removeFromCart(cartItem.item_id)}
+                                  className="btn btn-danger btn-sm"
+                                  title="Remove from cart"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ 
+                    marginTop: "24px", 
+                    padding: "20px", 
+                    background: "#f3f4f6", 
+                    borderRadius: "12px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}>
+                    <div>
+                      <div style={{ fontSize: "14px", color: "#6b7280", marginBottom: "4px" }}>Total</div>
+                      <div style={{ fontSize: "24px", fontWeight: 700, color: "#1f2937" }}>
+                        {getCartTotal()} points
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <button
+                        onClick={clearCart}
+                        className="btn btn-secondary"
+                      >
+                        Clear Cart
+                      </button>
+                      <button
+                        onClick={checkoutCart}
+                        className="btn btn-primary"
+                        disabled={getCartTotal() > (membershipPoints[cartOrg?.id] || 0)}
+                      >
+                        Checkout
+                      </button>
+                    </div>
+                  </div>
+                  {getCartTotal() > (membershipPoints[cartOrg?.id] || 0) && (
+                    <div className="alert alert-error" style={{ marginTop: "16px" }}>
+                      <XCircle className="w-5 h-5" />
+                      <p>Insufficient points. You need {getCartTotal()} points but only have {membershipPoints[cartOrg?.id] || 0}.</p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           {view === "purchases" && (
             <div className="panel">
-              <h2>My Purchases</h2>
+              <h2>My Orders</h2>
               {purchaseMessage && (
                 <div className={`alert ${purchaseMessage.includes("✓") ? "alert-success" : "alert-error"}`}>
                   {purchaseMessage.includes("✓") ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
@@ -991,99 +1406,117 @@ export default function DriverView({ user, onLogout }) {
               {loadingPurchases ? (
                 <div className="loading-state">
                   <Activity className="w-8 h-8 animate-spin" />
-                  <p>Loading purchases...</p>
+                  <p>Loading orders...</p>
                 </div>
               ) : purchases.length === 0 ? (
                 <div className="empty-state">
                   <Package className="w-12 h-12" />
-                  <p>No purchases yet. Start redeeming items from the catalog!</p>
+                  <p>No orders yet. Add items to your cart and checkout!</p>
                 </div>
               ) : (
-                <div className="table-container">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Organization</th>
-                        <th>Points</th>
-                        <th>Status</th>
-                        <th>Date</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {purchases.map((purchase) => (
-                        <tr key={purchase.id}>
-                          <td>
-                            {purchase.item ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                                {purchase.item.image_url && (
-                                  <img 
-                                    src={purchase.item.image_url} 
-                                    alt={purchase.item.title}
-                                    style={{ width: "50px", height: "50px", objectFit: "cover", borderRadius: "8px" }}
-                                  />
+                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                  {purchases.map((order) => (
+                    <div key={order.id} style={{ 
+                      border: "1px solid #e5e7eb", 
+                      borderRadius: "12px", 
+                      padding: "20px",
+                      background: "white"
+                    }}>
+                      <div style={{ 
+                        display: "flex", 
+                        justifyContent: "space-between", 
+                        alignItems: "center",
+                        marginBottom: "16px",
+                        paddingBottom: "16px",
+                        borderBottom: "1px solid #e5e7eb"
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "18px", marginBottom: "4px" }}>
+                            Order #{order.order_id}
+                          </div>
+                          <div style={{ fontSize: "14px", color: "#6b7280" }}>
+                            {order.organization_name || "Unknown Organization"} • {new Date(order.created_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontSize: "14px", color: "#6b7280", marginBottom: "4px" }}>Total</div>
+                          <div style={{ fontSize: "20px", fontWeight: 700, color: "#10b981" }}>
+                            {order.total_points} pts
+                          </div>
+                          <span className={`badge ${
+                            order.status === "completed" ? "accepted" :
+                            order.status === "pending" ? "pending" :
+                            "denied"
+                          }`} style={{ marginTop: "8px", display: "inline-block" }}>
+                            {order.status || "completed"}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: "12px" }}>
+                        <div style={{ fontWeight: 600, marginBottom: "8px", color: "#374151" }}>
+                          Items ({order.items?.length || 0}):
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {order.items && order.items.map((orderItem, idx) => (
+                            <div key={orderItem.id || idx} style={{ 
+                              display: "flex", 
+                              alignItems: "center", 
+                              gap: "12px",
+                              padding: "8px",
+                              background: "#f9fafb",
+                              borderRadius: "6px"
+                            }}>
+                              {orderItem.item?.image_url && (
+                                <img 
+                                  src={orderItem.item.image_url} 
+                                  alt={orderItem.item.title}
+                                  style={{ width: "40px", height: "40px", objectFit: "cover", borderRadius: "6px" }}
+                                />
+                              )}
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 500 }}>
+                                  {orderItem.item?.title || "Item no longer available"}
+                                </div>
+                                {orderItem.item?.price && (
+                                  <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                                    ${orderItem.item.price} {orderItem.item.currency}
+                                  </div>
                                 )}
-                                <div>
-                                  <div style={{ fontWeight: 600 }}>{purchase.item.title}</div>
-                                  {purchase.item.price && (
-                                    <div style={{ fontSize: "14px", color: "#6b7280" }}>
-                                      ${purchase.item.price} {purchase.item.currency}
-                                    </div>
-                                  )}
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: "12px", color: "#6b7280" }}>
+                                  Qty: {orderItem.quantity} × {orderItem.points_cost} pts
+                                </div>
+                                <div style={{ fontWeight: 600, color: "#10b981" }}>
+                                  {orderItem.quantity * orderItem.points_cost} pts
                                 </div>
                               </div>
-                            ) : (
-                              <span style={{ color: "#9ca3af" }}>Item no longer available</span>
-                            )}
-                          </td>
-                          <td>
-                            <div style={{ fontWeight: 500, color: "#374151" }}>
-                              {purchase.organization_name || "Unknown Organization"}
                             </div>
-                          </td>
-                          <td className="text-green">{purchase.points} pts</td>
-                          <td>
-                            <span className={`badge ${
-                              purchase.status === "completed" ? "accepted" :
-                              purchase.status === "pending" ? "pending" :
-                              "denied"
-                            }`}>
-                              {purchase.status || "completed"}
-                            </span>
-                          </td>
-                          <td>{new Date(purchase.created_at).toLocaleDateString()}</td>
-                          <td>
-                            <div className="action-group">
-                              {purchase.status !== "cancelled" && (
-                                <>
-                                  <button
-                                    onClick={() => openUpdateModal(purchase)}
-                                    className="btn btn-secondary btn-sm"
-                                    disabled={loadingPurchases || !purchase.item}
-                                    title="Update purchase"
-                                  >
-                                    <Edit className="w-4 h-4" /> Update
-                                  </button>
-                                  <button
-                                    onClick={() => cancelPurchase(purchase.transaction_id)}
-                                    className="btn btn-danger btn-sm"
-                                    disabled={loadingPurchases}
-                                    title="Cancel purchase and refund points"
-                                  >
-                                    <XCircleIcon className="w-4 h-4" /> Cancel
-                                  </button>
-                                </>
-                              )}
-                              {purchase.status === "cancelled" && (
-                                <span style={{ color: "#9ca3af", fontSize: "14px" }}>Cancelled</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          ))}
+                        </div>
+                      </div>
+                      {order.status !== "cancelled" && (
+                        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "12px" }}>
+                          <button
+                            onClick={() => openUpdateOrderModal(order)}
+                            className="btn btn-secondary btn-sm"
+                            disabled={loadingPurchases}
+                            title="Add more items to this order"
+                          >
+                            <Edit className="w-4 h-4" /> Add Items
+                          </button>
+                          <button
+                            onClick={() => cancelPurchase(order.order_id)}
+                            className="btn btn-danger btn-sm"
+                            disabled={loadingPurchases}
+                            title="Cancel order and refund points"
+                          >
+                            <XCircleIcon className="w-4 h-4" /> Cancel Order
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1180,28 +1613,52 @@ export default function DriverView({ user, onLogout }) {
                     </label>
                   </div>
                 </div>
+
+                <div className="form-group">
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: "#f9fafb", borderRadius: "8px" }}>
+                    <div>
+                      <label className="form-label" style={{ marginBottom: "4px" }}>Order Alerts</label>
+                      <p className="form-help" style={{ margin: 0, fontSize: "13px", color: "#6b7280" }}>
+                        Receive notifications when you place an order
+                      </p>
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={orderAlertsEnabled}
+                        onChange={toggleOrderAlertsPreference}
+                        style={{ width: "20px", height: "20px", cursor: "pointer", marginRight: "8px" }}
+                      />
+                      <span style={{ fontWeight: 600, color: orderAlertsEnabled ? "#10b981" : "#6b7280" }}>
+                        {orderAlertsEnabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </label>
+                  </div>
+                </div>
               </div>
             </>
           )}
         </div>
       </main>
 
-      {/* Update Purchase Modal */}
-      {showUpdateModal && updatingPurchase && (
+      {/* Update Order Modal */}
+      {showUpdateOrderModal && updatingOrder && (
         <div className="modal-overlay" onClick={(e) => {
           if (e.target === e.currentTarget) {
-            setShowUpdateModal(false);
-            setUpdatingPurchase(null);
+            setShowUpdateOrderModal(false);
+            setUpdatingOrder(null);
+            setOrderUpdateItems([]);
             setPurchaseMessage("");
           }
         }}>
-          <div className="modal-content">
+          <div className="modal-content" style={{ maxWidth: "600px", maxHeight: "80vh", overflowY: "auto" }}>
             <div className="modal-header">
-              <h3 className="modal-title">Update Purchase</h3>
+              <h3 className="modal-title">Add Items to Order #{updatingOrder.order_id}</h3>
               <button
                 onClick={() => {
-                  setShowUpdateModal(false);
-                  setUpdatingPurchase(null);
+                  setShowUpdateOrderModal(false);
+                  setUpdatingOrder(null);
+                  setOrderUpdateItems([]);
                   setPurchaseMessage("");
                 }}
                 className="modal-close"
@@ -1210,91 +1667,130 @@ export default function DriverView({ user, onLogout }) {
               </button>
             </div>
             <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Current Item</label>
-                <div style={{ padding: "12px", background: "#f3f4f6", borderRadius: "8px" }}>
-                  {updatingPurchase.item ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      {updatingPurchase.item.image_url && (
-                        <img 
-                          src={updatingPurchase.item.image_url} 
-                          alt={updatingPurchase.item.title}
-                          style={{ width: "40px", height: "40px", objectFit: "cover", borderRadius: "6px" }}
-                        />
-                      )}
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{updatingPurchase.item.title}</div>
-                        <div style={{ fontSize: "14px", color: "#6b7280" }}>
-                          {updatingPurchase.points} points
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <span style={{ color: "#9ca3af" }}>Item no longer available</span>
-                  )}
+              <p style={{ marginBottom: "20px", color: "#6b7280" }}>
+                Select items to add to this order. Points will be deducted from your balance.
+              </p>
+              <div style={{ marginBottom: "16px", padding: "12px", background: "#f3f4f6", borderRadius: "8px" }}>
+                <div style={{ fontSize: "14px", color: "#6b7280", marginBottom: "4px" }}>Current Order Total</div>
+                <div style={{ fontSize: "20px", fontWeight: 700, color: "#1f2937" }}>
+                  {updatingOrder.total_points} points
+                </div>
+                <div style={{ fontSize: "14px", color: "#6b7280", marginTop: "8px" }}>
+                  Available Points: <strong style={{ color: "#10b981" }}>
+                    {membershipPoints[updatingOrder.organization_id] || 0} pts
+                  </strong>
                 </div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Select New Item</label>
-                {availableItems.length === 0 ? (
-                  <p style={{ color: "#9ca3af" }}>No items available</p>
-                ) : (
-                  <div style={{ maxHeight: "300px", overflowY: "auto", border: "1px solid #e5e7eb", borderRadius: "8px" }}>
-                    {availableItems.map((item) => (
+              {orderUpdateItems.length === 0 ? (
+                <div className="empty-state" style={{ padding: "24px" }}>
+                  <Package className="w-12 h-12" />
+                  <p>No additional items available in this organization's catalog.</p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px", maxHeight: "400px", overflowY: "auto" }}>
+                  {orderUpdateItems.map((item) => {
+                    const selectedItem = orderUpdateItems.find(i => i.id === item.id && i.selected);
+                    const quantity = selectedItem?.quantity || 0;
+                    return (
                       <div
                         key={item.id}
-                        onClick={() => updatePurchase(item.id)}
                         style={{
+                          border: quantity > 0 ? "2px solid #3b82f6" : "1px solid #e5e7eb",
+                          borderRadius: "8px",
                           padding: "12px",
-                          borderBottom: "1px solid #e5e7eb",
-                          cursor: "pointer",
+                          background: quantity > 0 ? "#eff6ff" : "white",
                           display: "flex",
                           alignItems: "center",
-                          gap: "12px",
-                          transition: "background 0.2s"
+                          gap: "12px"
                         }}
-                        onMouseEnter={(e) => e.currentTarget.style.background = "#f3f4f6"}
-                        onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
                       >
                         {item.image_url && (
                           <img 
                             src={item.image_url} 
                             alt={item.title}
-                            style={{ width: "50px", height: "50px", objectFit: "cover", borderRadius: "6px" }}
+                            style={{ width: "60px", height: "60px", objectFit: "cover", borderRadius: "6px" }}
                           />
                         )}
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600 }}>{item.title}</div>
+                          <div style={{ fontWeight: 600, marginBottom: "4px" }}>{item.title}</div>
                           <div style={{ fontSize: "14px", color: "#6b7280" }}>
                             {item.points_cost} points
                             {item.price && ` • $${item.price} ${item.currency}`}
                           </div>
                         </div>
-                        {item.id === updatingPurchase.item_id && (
-                          <CheckCircle className="w-5 h-5" style={{ color: "#16a34a" }} />
-                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <button
+                            onClick={() => {
+                              const newItems = orderUpdateItems.map(i => {
+                                if (i.id === item.id) {
+                                  return { ...i, selected: true, quantity: Math.max(0, (i.quantity || 0) - 1) };
+                                }
+                                return i;
+                              });
+                              setOrderUpdateItems(newItems);
+                            }}
+                            className="btn btn-secondary btn-sm"
+                            style={{ minWidth: "32px", padding: "4px 8px" }}
+                            disabled={quantity === 0}
+                          >
+                            -
+                          </button>
+                          <span style={{ minWidth: "40px", textAlign: "center", fontWeight: 600 }}>
+                            {quantity}
+                          </span>
+                          <button
+                            onClick={() => {
+                              const newItems = orderUpdateItems.map(i => {
+                                if (i.id === item.id) {
+                                  return { ...i, selected: true, quantity: (i.quantity || 0) + 1 };
+                                }
+                                return i;
+                              });
+                              setOrderUpdateItems(newItems);
+                            }}
+                            className="btn btn-secondary btn-sm"
+                            style={{ minWidth: "32px", padding: "4px 8px" }}
+                          >
+                            +
+                          </button>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
               {purchaseMessage && (
-                <div className={`alert ${purchaseMessage.includes("✓") ? "alert-success" : "alert-error"}`}>
+                <div className={`alert ${purchaseMessage.includes("✓") ? "alert-success" : "alert-error"}`} style={{ marginTop: "16px" }}>
                   {purchaseMessage.includes("✓") ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                   <p>{purchaseMessage}</p>
                 </div>
               )}
-              <div className="modal-actions">
+              <div className="modal-actions" style={{ marginTop: "20px" }}>
                 <button
                   onClick={() => {
-                    setShowUpdateModal(false);
-                    setUpdatingPurchase(null);
+                    setShowUpdateOrderModal(false);
+                    setUpdatingOrder(null);
+                    setOrderUpdateItems([]);
                     setPurchaseMessage("");
                   }}
                   className="btn btn-secondary"
                   disabled={loadingPurchases}
                 >
                   Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const itemsToAdd = orderUpdateItems.filter(i => i.selected && i.quantity > 0);
+                    if (itemsToAdd.length === 0) {
+                      setPurchaseMessage("✗ Please select at least one item to add");
+                      return;
+                    }
+                    updateOrder(itemsToAdd);
+                  }}
+                  className="btn btn-primary"
+                  disabled={loadingPurchases || orderUpdateItems.filter(i => i.selected && i.quantity > 0).length === 0}
+                >
+                  {loadingPurchases ? "Adding..." : "Add Items to Order"}
                 </button>
               </div>
             </div>

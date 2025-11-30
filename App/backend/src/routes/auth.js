@@ -79,6 +79,18 @@ router.post("/api/reset-password", async (req, res) => {
       reset_expires: null
     });
 
+    // Log password change
+    try {
+      await AuditLog.create({
+        event_type: "password_change",
+        date: new Date(),
+        username: username,
+        change_type: "reset", // Password reset via email
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
+
     res.json({ message: "Password successfully reset!" });
   } catch (err) {
     console.error("Reset password error:", err);

@@ -25,7 +25,10 @@ import "./models/PointsBalance.js";
 import "./models/PointsTransaction.js";
 import "./models/DriverAlert.js";
 import "./models/DriverPointAlert.js";
+import "./models/DriverOrderAlert.js";
 import "./models/AuditLog.js";
+import "./models/Order.js";
+import "./models/OrderItem.js";
 import reportsRouter from "./routes/reports.js";
 
 
@@ -101,6 +104,7 @@ app.get("/api/users/:username", async (req, res) => {
         "created_at",
         "last_login",
         "point_alerts_enabled",
+        "order_alerts_enabled",
         "failed_attempts",
         "last_failed_at",
         "locked_until",
@@ -197,7 +201,7 @@ app.patch("/api/users/:username", async (req, res) => {
   
   try {
     const { username } = req.params;
-    const { email, newPassword, point_alerts_enabled, unlock_account } = req.body;
+    const { email, newPassword, point_alerts_enabled, order_alerts_enabled, unlock_account } = req.body;
     
     console.log(`[UPDATE USER] Updating user: ${username}`);
     console.log(`[UPDATE USER] Request body:`, { email, hasPassword: !!newPassword, point_alerts_enabled, unlock_account });
@@ -249,6 +253,12 @@ app.patch("/api/users/:username", async (req, res) => {
       console.log(`[UPDATE USER] point_alerts_enabled will be updated to: ${updates.point_alerts_enabled}`);
     }
 
+    // Update order_alerts_enabled if provided
+    if (order_alerts_enabled !== undefined && order_alerts_enabled !== null) {
+      updates.order_alerts_enabled = Boolean(order_alerts_enabled);
+      console.log(`[UPDATE USER] order_alerts_enabled will be updated to: ${updates.order_alerts_enabled}`);
+    }
+
     // Unlock account if requested
     if (unlock_account) {
       updates.locked_until = null;
@@ -264,6 +274,21 @@ app.patch("/api/users/:username", async (req, res) => {
     }
 
     console.log(`[UPDATE USER] Applying updates:`, updates);
+    
+    // Log password change if password is being updated
+    if (updates.password) {
+      try {
+        await AuditLog.create({
+          event_type: "password_change",
+          date: new Date(),
+          username: user.username,
+          change_type: "reset", // Admin reset
+        });
+      } catch (auditErr) {
+        console.error("Warning: Failed to create audit log:", auditErr.message);
+      }
+    }
+    
     await user.update(updates);
     
     // Reload user to get updated values
@@ -277,6 +302,7 @@ app.patch("/api/users/:username", async (req, res) => {
         email: user.email,
         role: user.role,
         point_alerts_enabled: user.point_alerts_enabled,
+        order_alerts_enabled: user.order_alerts_enabled,
         created_at: user.created_at,
         last_login: user.last_login,
         failed_attempts: user.failed_attempts,

@@ -1892,29 +1892,41 @@ export default function AdminDashboard({ user, onLogout }) {
     const formatAuditLog = (log) => {
       switch (log.event_type) {
         case "driver_application":
+          // Get status display
+          const getStatusDisplay = (status) => {
+            if (status === "accept" || status === "accepted") return "Accepted";
+            if (status === "reject" || status === "denied" || status === "rejected") return "Rejected";
+            if (status === "pending") return "Pending";
+            return status || "N/A";
+          };
           return {
             type: "Driver Application",
-            details: `${log.driver_username} - ${log.status === "accept" ? "Accepted" : "Rejected"}`,
+            details: `${log.driver_username} - ${getStatusDisplay(log.status)}`,
             sponsor: log.sponsor_username || "N/A",
             driver: log.driver_username,
             status: log.status,
             reason: log.reason || "N/A",
           };
         case "point_change":
+          // Show "Redeemed" if sponsor is null (driver redemption)
+          const sponsorDisplay = log.sponsor_username ? log.sponsor_username : "Redeemed";
           return {
             type: "Point Change",
             details: `${log.points > 0 ? "+" : ""}${log.points} points`,
-            sponsor: log.sponsor_username || "N/A",
+            sponsor: sponsorDisplay,
             driver: log.driver_username,
             points: log.points,
             reason: log.reason || "N/A",
           };
         case "password_change":
+          // Get user type (driver/sponsor/admin) from log if available
+          const userType = log.user_role || "User";
           return {
             type: "Password Change",
             details: `${log.change_type || "update"}`,
             user: log.username,
             changeType: log.change_type || "update",
+            userType: userType,
           };
         case "login_attempt":
           return {
@@ -2102,15 +2114,18 @@ export default function AdminDashboard({ user, onLogout }) {
                         <td>{formatted.sponsor || "N/A"}</td>
                         <td>
                           {formatted.status ? (
-                            <span className={`badge ${formatted.status === "success" || formatted.status === "accept" ? "success" : "failure"}`}>
-                              {formatted.status === "accept" ? "Accepted" : formatted.status === "reject" ? "Rejected" : formatted.status === "success" ? "Success" : "Failure"}
+                            <span className={`badge ${formatted.status === "success" || formatted.status === "accept" || formatted.status === "accepted" ? "success" : formatted.status === "pending" ? "pending" : "failure"}`}>
+                              {formatted.status === "accept" || formatted.status === "accepted" ? "Accepted" : formatted.status === "reject" || formatted.status === "rejected" || formatted.status === "denied" ? "Rejected" : formatted.status === "pending" ? "Pending" : formatted.status === "success" ? "Success" : "Failure"}
                             </span>
                           ) : formatted.points ? (
                             <span className={formatted.points > 0 ? "text-green" : "text-red"}>
                               {formatted.points > 0 ? "+" : ""}{formatted.points}
                             </span>
                           ) : formatted.changeType ? (
-                            formatted.changeType
+                            <span>
+                              {formatted.changeType}
+                              {formatted.userType && ` (${formatted.userType})`}
+                            </span>
                           ) : (
                             formatted.details
                           )}
