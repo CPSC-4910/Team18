@@ -15,6 +15,11 @@ const PointsTransaction = sequelize.define("PointsTransaction", {
   points: { type: DataTypes.INTEGER, allowNull: false }, // + for award, - for redeem
   reason: { type: DataTypes.STRING(255), allowNull: false },
   type: { type: DataTypes.ENUM("award", "deduct", "redeem"), allowNull: false },
+  status: { 
+    type: DataTypes.ENUM("pending", "completed", "cancelled"), 
+    allowNull: true,
+    defaultValue: "completed" // Default for existing records and non-redeem transactions
+  },
 }, {
   tableName: "PointsTransaction",
   timestamps: true,

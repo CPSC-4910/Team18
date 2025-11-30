@@ -4,6 +4,8 @@ import DriverOrganizationApplication from "../models/DriverOrganizationApplicati
 import DriverOrganizationLink from "../models/DriverOrganizationLink.js";
 import DriverAlert from "../models/DriverAlert.js";
 import Organization from "../models/Organization.js";
+import AuditLog from "../models/AuditLog.js";
+import SponsorOrganizationLink from "../models/SponsorOrganizationLink.js";
 
 const router = express.Router();
 
@@ -154,9 +156,19 @@ router.get("/by-driver/:username", async (req, res) => {
 // ===========================================
 router.patch("/:id/approve", async (req, res) => {
   try {
+    const { sponsor_username, reason } = req.body;
     const app = await DriverOrganizationApplication.findByPk(req.params.id);
     if (!app) {
       return res.status(404).json({ error: "Application not found" });
+    }
+
+    // Get sponsor from organization if not provided
+    let sponsor = sponsor_username;
+    if (!sponsor) {
+      const sponsorLink = await SponsorOrganizationLink.findOne({
+        where: { organization_id: app.organization_id, is_active: true },
+      });
+      sponsor = sponsorLink?.sponsor_username || null;
     }
 
     // 1. Mark application accepted
@@ -178,6 +190,17 @@ router.patch("/:id/approve", async (req, res) => {
       });
     }
 
+    // Log to audit log
+    await AuditLog.create({
+      event_type: "driver_application",
+      date: new Date(),
+      driver_username: app.driver_username,
+      sponsor_username: sponsor,
+      organization_id: app.organization_id,
+      status: "accept",
+      reason: reason || "Application approved",
+    });
+
     return res.json({ message: "Application approved" });
   } catch (err) {
     console.error("Error approving application:", err);
@@ -194,11 +217,32 @@ router.patch("/:id/approve", async (req, res) => {
 // ===========================================
 router.patch("/:id/deny", async (req, res) => {
   try {
+    const { sponsor_username, reason } = req.body;
     const app = await DriverOrganizationApplication.findByPk(req.params.id);
     if (!app)
       return res.status(404).json({ msg: "Application not found." });
 
+    // Get sponsor from organization if not provided
+    let sponsor = sponsor_username;
+    if (!sponsor) {
+      const sponsorLink = await SponsorOrganizationLink.findOne({
+        where: { organization_id: app.organization_id, is_active: true },
+      });
+      sponsor = sponsorLink?.sponsor_username || null;
+    }
+
     await app.update({ status: "denied" });
+
+    // Log to audit log
+    await AuditLog.create({
+      event_type: "driver_application",
+      date: new Date(),
+      driver_username: app.driver_username,
+      sponsor_username: sponsor,
+      organization_id: app.organization_id,
+      status: "reject",
+      reason: reason || "Application denied",
+    });
 
     res.json({ msg: "Application denied." });
   } catch (error) {

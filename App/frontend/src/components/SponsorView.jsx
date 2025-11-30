@@ -20,6 +20,9 @@ import {
   Trash2,
   FileText,
   Download,
+  UserPlus,
+  Edit,
+  Shield,
 } from "lucide-react";
 
 // Stats Card Component
@@ -65,6 +68,17 @@ export default function SponsorView({ user, onLogout }) {
   const [awardingPoints, setAwardingPoints] = useState(false);
   const [deductingPoints, setDeductingPoints] = useState(false);
 
+  // Driver Management
+  const [organizationDrivers, setOrganizationDrivers] = useState([]);
+  const [loadingDrivers, setLoadingDrivers] = useState(false);
+  const [showAddDriverModal, setShowAddDriverModal] = useState(false);
+  const [showEditDriverModal, setShowEditDriverModal] = useState(false);
+  const [editingDriver, setEditingDriver] = useState(null);
+  const [newDriver, setNewDriver] = useState({ username: "", email: "", password: "" });
+  const [editDriverForm, setEditDriverForm] = useState({ email: "", newPassword: "", point_alerts_enabled: true });
+  const [driverFormError, setDriverFormError] = useState("");
+  const [driverFormSuccess, setDriverFormSuccess] = useState("");
+
   // Account Management
   const [editEmail, setEditEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -72,6 +86,12 @@ export default function SponsorView({ user, onLogout }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [accountMessage, setAccountMessage] = useState("");
   const [updatingAccount, setUpdatingAccount] = useState(false);
+
+  // Sponsor Management
+  const [showAddSponsorModal, setShowAddSponsorModal] = useState(false);
+  const [newSponsor, setNewSponsor] = useState({ username: "", email: "", password: "" });
+  const [sponsorFormError, setSponsorFormError] = useState("");
+  const [sponsorFormSuccess, setSponsorFormSuccess] = useState("");
 
   // Reports
   const [reportData, setReportData] = useState([]);
@@ -140,6 +160,8 @@ export default function SponsorView({ user, onLogout }) {
         await loadOrgCatalog(active.id);
         await loadDriverPoints(active.id);
         await loadDrivers(active.id);
+        // Also load organization drivers for the enhanced table
+        await loadOrganizationDrivers();
       }
     } catch (err) {
       console.error("Failed to load joined organizations:", err);
@@ -234,6 +256,194 @@ export default function SponsorView({ user, onLogout }) {
       setDrivers(data || []);
     } catch (err) {
       console.error("Failed to load drivers:", err);
+    }
+  }
+
+  // Load organization drivers for the Drivers tab
+  async function loadOrganizationDrivers() {
+    if (!profile || !activeOrg) return;
+    setLoadingDrivers(true);
+    try {
+      const res = await fetch(`/api/sponsor/organization-drivers/${profile.name}`);
+      if (!res.ok) throw new Error("Failed to load drivers");
+      const data = await res.json();
+      setOrganizationDrivers(data.drivers || []);
+    } catch (err) {
+      console.error("Failed to load organization drivers:", err);
+      setOrganizationDrivers([]);
+    } finally {
+      setLoadingDrivers(false);
+    }
+  }
+
+  // Load organization drivers when activeOrg changes (for dashboard table)
+  useEffect(() => {
+    if (activeOrg && profile) {
+      loadOrganizationDrivers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOrg, profile]);
+
+  // Create new driver
+  async function handleCreateDriver() {
+    setDriverFormError("");
+    setDriverFormSuccess("");
+    if (!newDriver.username || !newDriver.email || !newDriver.password) {
+      setDriverFormError("All fields are required.");
+      return;
+    }
+    if (newDriver.password.length < 8) {
+      setDriverFormError("Password must be at least 8 characters.");
+      return;
+    }
+    setLoadingDrivers(true);
+    try {
+      const res = await fetch("/api/sponsor/create-driver", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sponsor_username: profile.name,
+          ...newDriver
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDriverFormSuccess(`Driver '${data.driver?.username || newDriver.username}' created!`);
+        // Refresh both driver lists
+        await loadOrganizationDrivers();
+        if (activeOrg) {
+          await loadDrivers(activeOrg.id);
+          await loadDriverPoints(activeOrg.id);
+        }
+        setTimeout(() => {
+          setShowAddDriverModal(false);
+          setNewDriver({ username: "", email: "", password: "" });
+        }, 1200);
+      } else {
+        setDriverFormError(data.error || "Failed to create driver");
+      }
+    } catch (err) {
+      setDriverFormError("Server error");
+    } finally {
+      setLoadingDrivers(false);
+    }
+  }
+
+  // Fetch driver details for editing
+  async function fetchDriverDetails(username) {
+    setLoadingDrivers(true);
+    setDriverFormError("");
+    setDriverFormSuccess("");
+    try {
+      const res = await fetch(`/api/sponsor/driver/${username}?sponsor_username=${profile.name}`);
+      if (!res.ok) throw new Error("Failed to fetch driver details");
+      const driverData = await res.json();
+      setEditingDriver(driverData);
+      setEditDriverForm({
+        email: driverData.email || "",
+        newPassword: "",
+        point_alerts_enabled: driverData.point_alerts_enabled !== undefined ? driverData.point_alerts_enabled : true,
+      });
+      setShowEditDriverModal(true);
+    } catch (error) {
+      console.error("Error fetching driver details:", error);
+      setDriverFormError("Failed to load driver details");
+    } finally {
+      setLoadingDrivers(false);
+    }
+  }
+
+  // Create new sponsor
+  async function handleCreateSponsor() {
+    setSponsorFormError("");
+    setSponsorFormSuccess("");
+    if (!newSponsor.username || !newSponsor.email || !newSponsor.password) {
+      setSponsorFormError("All fields are required.");
+      return;
+    }
+    if (newSponsor.password.length < 8) {
+      setSponsorFormError("Password must be at least 8 characters.");
+      return;
+    }
+    setUpdatingAccount(true);
+    try {
+      const res = await fetch("/api/sponsor/create-sponsor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newSponsor),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSponsorFormSuccess(`Sponsor '${data.sponsor?.username || newSponsor.username}' created successfully!`);
+        setTimeout(() => {
+          setShowAddSponsorModal(false);
+          setNewSponsor({ username: "", email: "", password: "" });
+        }, 1500);
+      } else {
+        setSponsorFormError(data.error || "Failed to create sponsor");
+      }
+    } catch (err) {
+      setSponsorFormError("Server error");
+    } finally {
+      setUpdatingAccount(false);
+    }
+  }
+
+  // Update driver
+  async function handleUpdateDriver() {
+    if (!editingDriver) return;
+    setDriverFormError("");
+    setDriverFormSuccess("");
+    setLoadingDrivers(true);
+    try {
+      const updateData = {
+        sponsor_username: profile.name,
+      };
+      if (editDriverForm.email && editDriverForm.email !== editingDriver.email) {
+        updateData.email = editDriverForm.email;
+      }
+      if (editDriverForm.newPassword) {
+        if (editDriverForm.newPassword.length < 8) {
+          setDriverFormError("Password must be at least 8 characters");
+          setLoadingDrivers(false);
+          return;
+        }
+        updateData.newPassword = editDriverForm.newPassword;
+      }
+      if (editDriverForm.point_alerts_enabled !== editingDriver.point_alerts_enabled) {
+        updateData.point_alerts_enabled = editDriverForm.point_alerts_enabled;
+      }
+      if (Object.keys(updateData).length === 1) {
+        setDriverFormError("No changes to save");
+        setLoadingDrivers(false);
+        return;
+      }
+      const res = await fetch(`/api/sponsor/driver/${editingDriver.username}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updateData),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDriverFormSuccess("Driver updated successfully!");
+        // Refresh both driver lists
+        await loadOrganizationDrivers();
+        if (activeOrg) {
+          await loadDrivers(activeOrg.id);
+        }
+        setTimeout(() => {
+          setShowEditDriverModal(false);
+          setEditDriverForm({ email: "", newPassword: "", point_alerts_enabled: true });
+          setEditingDriver(null);
+        }, 1500);
+      } else {
+        setDriverFormError(data.error || "Failed to update driver");
+      }
+    } catch (error) {
+      console.error("Error updating driver:", error);
+      setDriverFormError("Server error");
+    } finally {
+      setLoadingDrivers(false);
     }
   }
 
@@ -882,7 +1092,10 @@ export default function SponsorView({ user, onLogout }) {
                 <div className="panel">
                   <div className="panel-header">
                     <h2>Drivers & Points</h2>
-      </div>
+                    <button onClick={() => setShowAddDriverModal(true)} className="btn btn-primary">
+                      <UserPlus className="w-5 h-5" /> Add Driver
+                    </button>
+                  </div>
                   {drivers.length === 0 ? (
                     <div className="empty-state">
                       <Users className="w-12 h-12" />
@@ -894,31 +1107,46 @@ export default function SponsorView({ user, onLogout }) {
                         <thead>
                           <tr>
                             <th>Driver Username</th>
+                            <th>Email</th>
                             <th>Current Points</th>
                             <th>Actions</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {drivers.map((driver) => (
-                            <tr key={driver.driver_username}>
-                              <td>
-                                <div className="user-cell">
-                                  <div className="user-avatar">{driver.driver_username.charAt(0).toUpperCase()}</div>
-                                  <span className="user-name">{driver.driver_username}</span>
-                                </div>
-                              </td>
-                              <td className="text-green">{driverPoints[driver.driver_username] || 0} pts</td>
-                              <td>
-                                <button
-                                  className="btn btn-danger btn-sm"
-                                  onClick={() => removeDriverFromOrganization(driver.driver_username)}
-                                  title={`Remove ${driver.driver_username} from ${activeOrg.name}`}
-                                >
-                                  <Trash2 className="w-4 h-4" /> Remove
-          </button>
-                              </td>
-                            </tr>
-                          ))}
+                          {drivers.map((driver) => {
+                            // Find driver details from organizationDrivers if available
+                            const driverDetails = organizationDrivers.find(d => d.username === driver.driver_username);
+                            return (
+                              <tr key={driver.driver_username}>
+                                <td>
+                                  <div className="user-cell">
+                                    <div className="user-avatar">{driver.driver_username.charAt(0).toUpperCase()}</div>
+                                    <span className="user-name">{driver.driver_username}</span>
+                                  </div>
+                                </td>
+                                <td>{driverDetails?.email || driver.email || "N/A"}</td>
+                                <td className="text-green">{driverPoints[driver.driver_username] || 0} pts</td>
+                                <td>
+                                  <div className="action-group">
+                                    <button
+                                      onClick={() => fetchDriverDetails(driver.driver_username)}
+                                      className="btn btn-secondary btn-sm"
+                                      disabled={loadingDrivers}
+                                    >
+                                      <Edit className="w-4 h-4" /> Edit
+                                    </button>
+                                    <button
+                                      className="btn btn-danger btn-sm"
+                                      onClick={() => removeDriverFromOrganization(driver.driver_username)}
+                                      title={`Remove ${driver.driver_username} from ${activeOrg.name}`}
+                                    >
+                                      <Trash2 className="w-4 h-4" /> Remove
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -1409,10 +1637,334 @@ export default function SponsorView({ user, onLogout }) {
                   <p>{accountMessage}</p>
                 </div>
               )}
+
+              <div className="panel" style={{ marginTop: "24px", borderTop: "2px solid #e5e7eb", paddingTop: "24px" }}>
+                <div className="panel-header">
+                  <h2><UserPlus className="w-5 h-5" style={{ display: "inline", marginRight: "8px" }} /> Create New Sponsor</h2>
+                </div>
+                <p style={{ color: "#6b7280", marginBottom: "20px", fontSize: "14px" }}>
+                  Create a new sponsor account. Sponsors are self-managed and do not require an application process.
+                </p>
+                <button
+                  onClick={() => setShowAddSponsorModal(true)}
+                  className="btn btn-primary"
+                  disabled={updatingAccount}
+                >
+                  <UserPlus className="w-5 h-5" /> Create New Sponsor
+                </button>
+              </div>
             </>
           )}
         </div>
       </main>
+
+      {/* Add Driver Modal */}
+      {showAddDriverModal && (
+        <div className="modal-overlay" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowAddDriverModal(false);
+            setDriverFormError("");
+            setDriverFormSuccess("");
+            setNewDriver({ username: "", email: "", password: "" });
+          }
+        }}>
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Add New Driver</h3>
+              <button
+                onClick={() => {
+                  setShowAddDriverModal(false);
+                  setDriverFormError("");
+                  setDriverFormSuccess("");
+                  setNewDriver({ username: "", email: "", password: "" });
+                }}
+                className="modal-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Username</label>
+                <input
+                  type="text"
+                  name="username"
+                  className="form-input"
+                  value={newDriver.username}
+                  onChange={(e) => setNewDriver({ ...newDriver, username: e.target.value })}
+                  disabled={loadingDrivers}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  className="form-input"
+                  value={newDriver.email}
+                  onChange={(e) => setNewDriver({ ...newDriver, email: e.target.value })}
+                  disabled={loadingDrivers}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  className="form-input"
+                  value={newDriver.password}
+                  onChange={(e) => setNewDriver({ ...newDriver, password: e.target.value })}
+                  disabled={loadingDrivers}
+                  placeholder="Minimum 8 characters"
+                />
+              </div>
+              {driverFormError && (
+                <div className="alert alert-error">
+                  <XCircle className="w-5 h-5" />
+                  <p>{driverFormError}</p>
+                </div>
+              )}
+              {driverFormSuccess && (
+                <div className="alert alert-success">
+                  <CheckCircle className="w-5 h-5" />
+                  <p>{driverFormSuccess}</p>
+                </div>
+              )}
+              <div className="modal-actions">
+                <button
+                  onClick={() => {
+                    setShowAddDriverModal(false);
+                    setDriverFormError("");
+                    setDriverFormSuccess("");
+                    setNewDriver({ username: "", email: "", password: "" });
+                  }}
+                  className="btn btn-secondary"
+                  disabled={loadingDrivers}
+                >
+                  Cancel
+                </button>
+                <button onClick={handleCreateDriver} className="btn btn-primary" disabled={loadingDrivers}>
+                  {loadingDrivers ? "Creating..." : "Create Driver"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Driver Modal */}
+      {showEditDriverModal && editingDriver && (
+        <div className="modal-overlay" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowEditDriverModal(false);
+            setEditingDriver(null);
+            setEditDriverForm({ email: "", newPassword: "", point_alerts_enabled: true });
+            setDriverFormError("");
+            setDriverFormSuccess("");
+          }
+        }}>
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Edit Driver: {editingDriver.username}</h3>
+              <button
+                onClick={() => {
+                  setShowEditDriverModal(false);
+                  setEditingDriver(null);
+                  setEditDriverForm({ email: "", newPassword: "", point_alerts_enabled: true });
+                  setDriverFormError("");
+                  setDriverFormSuccess("");
+                }}
+                className="modal-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Username</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={editingDriver.username}
+                  disabled
+                  style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+                />
+                <p className="form-help">Username cannot be changed</p>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={editDriverForm.email}
+                  onChange={(e) => setEditDriverForm({ ...editDriverForm, email: e.target.value })}
+                  disabled={loadingDrivers}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">New Password (leave blank to keep current)</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  value={editDriverForm.newPassword}
+                  onChange={(e) => setEditDriverForm({ ...editDriverForm, newPassword: e.target.value })}
+                  disabled={loadingDrivers}
+                  placeholder="Enter new password (min 8 characters)"
+                />
+                <p className="form-help">Only enter if you want to reset the password</p>
+              </div>
+              <div className="form-group">
+                <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input
+                    type="checkbox"
+                    checked={editDriverForm.point_alerts_enabled}
+                    onChange={(e) =>
+                      setEditDriverForm({ ...editDriverForm, point_alerts_enabled: e.target.checked })
+                    }
+                    disabled={loadingDrivers}
+                  />
+                  Point Alerts Enabled
+                </label>
+              </div>
+              {driverFormError && (
+                <div className="alert alert-error">
+                  <XCircle className="w-5 h-5" />
+                  <p>{driverFormError}</p>
+                </div>
+              )}
+              {driverFormSuccess && (
+                <div className="alert alert-success">
+                  <CheckCircle className="w-5 h-5" />
+                  <p>{driverFormSuccess}</p>
+                </div>
+              )}
+              <div className="modal-actions">
+                <button
+                  onClick={() => {
+                    setShowEditDriverModal(false);
+                    setEditingDriver(null);
+                    setEditDriverForm({ email: "", newPassword: "", point_alerts_enabled: true });
+                    setDriverFormError("");
+                    setDriverFormSuccess("");
+                  }}
+                  className="btn btn-secondary"
+                  disabled={loadingDrivers}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUpdateDriver}
+                  className="btn btn-primary"
+                  disabled={loadingDrivers || !editingDriver}
+                >
+                  {loadingDrivers ? "Updating..." : "Update Driver"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Sponsor Modal */}
+      {showAddSponsorModal && (
+        <div className="modal-overlay" onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowAddSponsorModal(false);
+            setSponsorFormError("");
+            setSponsorFormSuccess("");
+            setNewSponsor({ username: "", email: "", password: "" });
+          }
+        }}>
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Create New Sponsor</h3>
+              <button
+                onClick={() => {
+                  setShowAddSponsorModal(false);
+                  setSponsorFormError("");
+                  setSponsorFormSuccess("");
+                  setNewSponsor({ username: "", email: "", password: "" });
+                }}
+                className="modal-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Username</label>
+                <input
+                  type="text"
+                  name="username"
+                  className="form-input"
+                  value={newSponsor.username}
+                  onChange={(e) => setNewSponsor({ ...newSponsor, username: e.target.value })}
+                  disabled={updatingAccount}
+                  placeholder="Enter username"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input
+                  type="email"
+                  name="email"
+                  className="form-input"
+                  value={newSponsor.email}
+                  onChange={(e) => setNewSponsor({ ...newSponsor, email: e.target.value })}
+                  disabled={updatingAccount}
+                  placeholder="Enter email address"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  className="form-input"
+                  value={newSponsor.password}
+                  onChange={(e) => setNewSponsor({ ...newSponsor, password: e.target.value })}
+                  disabled={updatingAccount}
+                  placeholder="Minimum 8 characters"
+                />
+                <p className="form-help">Password must be at least 8 characters long</p>
+              </div>
+              {sponsorFormError && (
+                <div className="alert alert-error">
+                  <XCircle className="w-5 h-5" />
+                  <p>{sponsorFormError}</p>
+                </div>
+              )}
+              {sponsorFormSuccess && (
+                <div className="alert alert-success">
+                  <CheckCircle className="w-5 h-5" />
+                  <p>{sponsorFormSuccess}</p>
+                </div>
+              )}
+              <div className="modal-actions">
+                <button
+                  onClick={() => {
+                    setShowAddSponsorModal(false);
+                    setSponsorFormError("");
+                    setSponsorFormSuccess("");
+                    setNewSponsor({ username: "", email: "", password: "" });
+                  }}
+                  className="btn btn-secondary"
+                  disabled={updatingAccount}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateSponsor}
+                  className="btn btn-primary"
+                  disabled={updatingAccount}
+                >
+                  {updatingAccount ? "Creating..." : "Create Sponsor"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{css}</style>
     </div>
@@ -1998,5 +2550,149 @@ const css = `
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+/* ===== MODALS ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease-out;
+  position: relative;
+  margin: auto;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px 32px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  border-radius: 20px 20px 0 0;
+}
+
+.modal-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-title::before {
+  content: "";
+  width: 4px;
+  height: 28px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 2px;
+}
+
+.modal-close {
+  background: #f3f4f6;
+  border: none;
+  color: #6b7280;
+  padding: 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+}
+
+.modal-close:hover {
+  background: #e5e7eb;
+  color: #374151;
+  transform: rotate(90deg);
+}
+
+.modal-body {
+  padding: 32px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.modal-actions .btn {
+  flex: 1;
+  padding: 14px 24px;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: all 0.2s;
+  font-size: 15px;
+}
+
+.modal-actions .btn-primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  color: white;
+}
+
+.modal-actions .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+  transform: translateY(-1px);
+}
+
+.modal-actions .btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+
+.modal-actions .btn-secondary:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.form-help {
+  font-size: 13px;
+  color: #6b7280;
+  margin-top: 6px;
+  font-style: italic;
 }
 `;

@@ -2,6 +2,7 @@
 import express from "express";
 import bcrypt from "bcrypt";
 import User from "../models/User.js";
+import AuditLog from "../models/AuditLog.js";
 import { Op } from "sequelize";
 import nodemailer from "nodemailer";
 import DriverOrganizationLink from "../models/DriverOrganizationLink.js";
@@ -212,6 +213,18 @@ router.post("/api/login", async (req, res) => {
 
       await user.save();
 
+      // Log failed login attempt
+      try {
+        await AuditLog.create({
+          event_type: "login_attempt",
+          date: now,
+          username: username,
+          status: "failure",
+        });
+      } catch (auditErr) {
+        console.error("Warning: Failed to create audit log:", auditErr.message);
+      }
+
       return res.status(401).json({ error: "Invalid username or password" });
     }
 
@@ -224,6 +237,17 @@ router.post("/api/login", async (req, res) => {
 
     console.log("[LOGIN OK]", user.username, "updated last_login:", user.last_login);
 
+    // Log successful login attempt
+    try {
+      await AuditLog.create({
+        event_type: "login_attempt",
+        date: now,
+        username: username,
+        status: "success",
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
     
     return res.json({
       user: {
@@ -396,6 +420,18 @@ router.patch("/api/users/update-password", async (req, res) => {
 
     // Update password
     await user.update({ password: hashedPassword });
+
+    // Log password change
+    try {
+      await AuditLog.create({
+        event_type: "password_change",
+        date: new Date(),
+        username: username,
+        change_type: "update",
+      });
+    } catch (auditErr) {
+      console.error("Warning: Failed to create audit log:", auditErr.message);
+    }
 
     res.json({
       message: "Password updated successfully"

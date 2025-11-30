@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Users, Package, Award, Activity, Settings, LogOut, Menu, X, 
   TrendingUp, AlertCircle, ShoppingCart, UserPlus, CheckCircle, 
-  XCircle, Trash2, Download, FileText, User, Lock
+  XCircle, Trash2, Download, FileText, User, Lock, Edit, Shield
 } from 'lucide-react';
 
 // Modal Component
@@ -118,20 +118,37 @@ export default function AdminDashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showAddSponsorModal, setShowAddSponsorModal] = useState(false);
+  const [showAddAdminModal, setShowAddAdminModal] = useState(false);
   
   // Data states
   const [drivers, setDrivers] = useState([]);
   const [sponsors, setSponsors] = useState([]);
+  const [admins, setAdmins] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // User edit modal state
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editUserForm, setEditUserForm] = useState({
+    email: "",
+    newPassword: "",
+    point_alerts_enabled: true,
+  });
+  const [editUserError, setEditUserError] = useState("");
+  const [editUserSuccess, setEditUserSuccess] = useState("");
+  const [loadingUserDetails, setLoadingUserDetails] = useState(false);
   
   // Form states
   const [newUser, setNewUser] = useState({ username: "", email: "", password: "" });
   const [newSponsor, setNewSponsor] = useState({ username: "", email: "", password: "" });
+  const [newAdmin, setNewAdmin] = useState({ username: "", email: "", password: "" });
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
   const [sponsorFormError, setSponsorFormError] = useState("");
   const [sponsorFormSuccess, setSponsorFormSuccess] = useState("");
+  const [adminFormError, setAdminFormError] = useState("");
+  const [adminFormSuccess, setAdminFormSuccess] = useState("");
   
   // Catalog states
   const [catalog, setCatalog] = useState([]);
@@ -145,6 +162,47 @@ export default function AdminDashboard({ user, onLogout }) {
     type: "all",
     username: ""
   });
+
+  // Sales by Sponsor report state
+  const [salesBySponsorFilter, setSalesBySponsorFilter] = useState({
+    sponsor_username: "all",
+    startDate: "",
+    endDate: "",
+    view: "summary" // "summary" or "detailed"
+  });
+  const [salesBySponsorData, setSalesBySponsorData] = useState([]);
+  const [loadingSalesBySponsor, setLoadingSalesBySponsor] = useState(false);
+  
+  // Sales by Driver report state
+  const [salesByDriverFilter, setSalesByDriverFilter] = useState({
+    sponsor_username: "all",
+    driver_username: "all",
+    startDate: "",
+    endDate: "",
+    view: "summary" // "summary" or "detailed"
+  });
+  const [salesByDriverData, setSalesByDriverData] = useState([]);
+  const [loadingSalesByDriver, setLoadingSalesByDriver] = useState(false);
+  
+  // Invoice generation state
+  const [invoiceFilter, setInvoiceFilter] = useState({
+    sponsor_username: "all",
+    startDate: "",
+    endDate: "",
+  });
+  const [invoiceData, setInvoiceData] = useState([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+  
+  // Audit log state
+  const [auditLogFilter, setAuditLogFilter] = useState({
+    event_type: "all",
+    startDate: "",
+    endDate: "",
+  });
+  const [auditLogData, setAuditLogData] = useState([]);
+  const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
+  
+  const [reportView, setReportView] = useState("transactions"); // "transactions", "salesBySponsor", "salesByDriver", "invoices", or "auditLogs"
 
   // Account Management
   const [editEmail, setEditEmail] = useState("");
@@ -171,12 +229,32 @@ export default function AdminDashboard({ user, onLogout }) {
     }
     if (activeTab === "drivers") fetchDrivers();
     if (activeTab === "sponsors") fetchSponsors();
-    if (activeTab === "reports") loadAllTransactions();
+    if (activeTab === "admins") fetchAdmins();
+    if (activeTab === "reports") {
+      loadAllTransactions();
+    }
     if (activeTab === "catalog") loadCatalog(searchTerm);
     if (activeTab === "settings") {
       setEditEmail(user?.email || "");
     }
   }, [activeTab, user]);
+
+  // Load sales by sponsor when view changes
+  useEffect(() => {
+    if (activeTab === "reports" && reportView === "salesBySponsor") {
+      loadSalesBySponsor();
+    }
+    if (activeTab === "reports" && reportView === "salesByDriver") {
+      loadSalesByDriver();
+    }
+    if (activeTab === "reports" && reportView === "invoices") {
+      loadInvoices();
+    }
+    if (activeTab === "reports" && reportView === "auditLogs") {
+      loadAuditLogs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportView, activeTab]);
 
   // ===== Data Loaders =====
   const loadStats = async () => {
@@ -263,6 +341,161 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   };
 
+  const fetchAdmins = async () => {
+    try {
+      const response = await fetch("/api/admins");
+      if (response.ok) {
+        const data = await response.json();
+        setAdmins(data.admins || []);
+      }
+    } catch (error) {
+      console.error("Error fetching admins:", error);
+    }
+  };
+
+  const fetchUserDetails = async (username) => {
+    setLoadingUserDetails(true);
+    setEditUserError("");
+    setEditUserSuccess("");
+    setShowEditUserModal(true); // Show modal immediately
+    try {
+      const response = await fetch(`/api/users/${username}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || "Failed to fetch user details");
+      }
+      const userData = await response.json();
+      setEditingUser(userData);
+      setEditUserForm({
+        email: userData.email || "",
+        newPassword: "",
+        point_alerts_enabled: userData.point_alerts_enabled !== undefined ? userData.point_alerts_enabled : true,
+      });
+    } catch (error) {
+      console.error("Error fetching user details:", error);
+      setEditUserError(error.message || "Failed to load user details");
+      // Set a minimal user object so the modal can display
+      setEditingUser({
+        username: username,
+        role: "unknown",
+        email: "",
+      });
+    } finally {
+      setLoadingUserDetails(false);
+    }
+  };
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
+    
+    setEditUserError("");
+    setEditUserSuccess("");
+    setLoading(true);
+
+    try {
+      const updateData = {};
+      if (editUserForm.email && editUserForm.email !== editingUser.email) {
+        updateData.email = editUserForm.email;
+      }
+      if (editUserForm.newPassword) {
+        if (editUserForm.newPassword.length < 8) {
+          setEditUserError("Password must be at least 8 characters");
+          setLoading(false);
+          return;
+        }
+        updateData.newPassword = editUserForm.newPassword;
+      }
+      if (editUserForm.point_alerts_enabled !== editingUser.point_alerts_enabled) {
+        updateData.point_alerts_enabled = editUserForm.point_alerts_enabled;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        setEditUserError("No changes to save");
+        setLoading(false);
+        return;
+      }
+
+      console.log("Sending update request:", updateData);
+      const response = await fetch(`/api/users/${editingUser.username}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updateData),
+      });
+
+      console.log("Response status:", response.status);
+      console.log("Response headers:", response.headers.get("content-type"));
+      
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response received:", text.substring(0, 200));
+        throw new Error(`Server returned non-JSON response. Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Update response:", data);
+
+      if (response.ok) {
+        setEditUserSuccess("User updated successfully!");
+        // Refresh the appropriate list
+        if (editingUser.role === "driver") {
+          fetchDrivers();
+        } else if (editingUser.role === "sponsor") {
+          fetchSponsors();
+        } else if (editingUser.role === "admin") {
+          fetchAdmins();
+        }
+        // Update editing user with new data
+        setEditingUser({ ...editingUser, ...data.user });
+        setTimeout(() => {
+          setShowEditUserModal(false);
+          setEditUserForm({ email: "", newPassword: "", point_alerts_enabled: true });
+          setEditingUser(null);
+        }, 1500);
+      } else {
+        const errorMessage = data.error || "Failed to update user";
+        const errorDetails = data.details ? `: ${data.details}` : "";
+        setEditUserError(`${errorMessage}${errorDetails}`);
+      }
+    } catch (error) {
+      console.error("Error updating user:", error);
+      setEditUserError(`Server error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUnlockAccount = async () => {
+    if (!editingUser) return;
+    
+    setEditUserError("");
+    setEditUserSuccess("");
+    setLoading(true);
+
+    try {
+      const response = await fetch(`/api/users/${editingUser.username}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unlock_account: true }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setEditUserSuccess("Account unlocked successfully!");
+        fetchUserDetails(editingUser.username);
+      } else {
+        setEditUserError(data.error || "Failed to unlock account");
+      }
+    } catch (error) {
+      console.error("Error unlocking account:", error);
+      setEditUserError("Server error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadCatalog = async (query) => {
     setLoadingCatalog(true);
     try {
@@ -273,6 +506,121 @@ export default function AdminDashboard({ user, onLogout }) {
       console.error("Failed to load eBay catalog:", err);
     } finally {
       setLoadingCatalog(false);
+    }
+  };
+
+  const loadSalesBySponsor = async () => {
+    setLoadingSalesBySponsor(true);
+    try {
+      const params = new URLSearchParams({
+        view: salesBySponsorFilter.view,
+      });
+      
+      if (salesBySponsorFilter.sponsor_username && salesBySponsorFilter.sponsor_username !== "all") {
+        params.append("sponsor_username", salesBySponsorFilter.sponsor_username);
+      }
+      if (salesBySponsorFilter.startDate) {
+        params.append("startDate", salesBySponsorFilter.startDate);
+      }
+      if (salesBySponsorFilter.endDate) {
+        params.append("endDate", salesBySponsorFilter.endDate);
+      }
+
+      const res = await fetch(`/api/reports/sales-by-sponsor?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to load sales by sponsor report");
+      const data = await res.json();
+      setSalesBySponsorData(data);
+    } catch (err) {
+      console.error("Error loading sales by sponsor report:", err);
+      setSalesBySponsorData([]);
+    } finally {
+      setLoadingSalesBySponsor(false);
+    }
+  };
+
+  const loadSalesByDriver = async () => {
+    setLoadingSalesByDriver(true);
+    try {
+      const params = new URLSearchParams({
+        view: salesByDriverFilter.view,
+      });
+      
+      if (salesByDriverFilter.sponsor_username && salesByDriverFilter.sponsor_username !== "all") {
+        params.append("sponsor_username", salesByDriverFilter.sponsor_username);
+      }
+      if (salesByDriverFilter.driver_username && salesByDriverFilter.driver_username !== "all") {
+        params.append("driver_username", salesByDriverFilter.driver_username);
+      }
+      if (salesByDriverFilter.startDate) {
+        params.append("startDate", salesByDriverFilter.startDate);
+      }
+      if (salesByDriverFilter.endDate) {
+        params.append("endDate", salesByDriverFilter.endDate);
+      }
+
+      const res = await fetch(`/api/reports/sales-by-driver?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to load sales by driver report");
+      const data = await res.json();
+      setSalesByDriverData(data);
+    } catch (err) {
+      console.error("Error loading sales by driver report:", err);
+      setSalesByDriverData([]);
+    } finally {
+      setLoadingSalesByDriver(false);
+    }
+  };
+
+  const loadInvoices = async () => {
+    setLoadingInvoices(true);
+    try {
+      const params = new URLSearchParams();
+      
+      if (invoiceFilter.sponsor_username && invoiceFilter.sponsor_username !== "all") {
+        params.append("sponsor_username", invoiceFilter.sponsor_username);
+      }
+      if (invoiceFilter.startDate) {
+        params.append("startDate", invoiceFilter.startDate);
+      }
+      if (invoiceFilter.endDate) {
+        params.append("endDate", invoiceFilter.endDate);
+      }
+
+      const res = await fetch(`/api/reports/invoices?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to load invoices");
+      const data = await res.json();
+      setInvoiceData(data);
+    } catch (err) {
+      console.error("Error loading invoices:", err);
+      setInvoiceData([]);
+    } finally {
+      setLoadingInvoices(false);
+    }
+  };
+
+  const loadAuditLogs = async () => {
+    setLoadingAuditLogs(true);
+    try {
+      const params = new URLSearchParams();
+      
+      if (auditLogFilter.event_type && auditLogFilter.event_type !== "all") {
+        params.append("event_type", auditLogFilter.event_type);
+      }
+      if (auditLogFilter.startDate) {
+        params.append("startDate", auditLogFilter.startDate);
+      }
+      if (auditLogFilter.endDate) {
+        params.append("endDate", auditLogFilter.endDate);
+      }
+
+      const res = await fetch(`/api/reports/audit-logs?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to load audit logs");
+      const data = await res.json();
+      setAuditLogData(data);
+    } catch (err) {
+      console.error("Error loading audit logs:", err);
+      setAuditLogData([]);
+    } finally {
+      setLoadingAuditLogs(false);
     }
   };
 
@@ -292,8 +640,10 @@ export default function AdminDashboard({ user, onLogout }) {
       // Update local state
       if (role === "driver") {
         setDrivers((prev) => prev.filter((u) => u.username !== username));
-      } else {
+      } else if (role === "sponsor") {
         setSponsors((prev) => prev.filter((u) => u.username !== username));
+      } else if (role === "admin") {
+        setAdmins((prev) => prev.filter((u) => u.username !== username));
       }
       
       alert(`✅ ${data.message || `${role} '${username}' deleted successfully.`}`);
@@ -364,6 +714,42 @@ export default function AdminDashboard({ user, onLogout }) {
       }
     } catch (err) {
       setSponsorFormError("Server error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddAdmin = async () => {
+    setAdminFormError("");
+    setAdminFormSuccess("");
+    if (!newAdmin.username || !newAdmin.email || !newAdmin.password) {
+      setAdminFormError("All fields are required.");
+      return;
+    }
+    if (newAdmin.password.length < 8) {
+      setAdminFormError("Password must be at least 8 characters.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newAdmin, role: "admin" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAdminFormSuccess(`Admin '${data.user?.username || newAdmin.username}' created!`);
+        fetchAdmins();
+        setTimeout(() => {
+          setShowAddAdminModal(false);
+          setNewAdmin({ username: "", email: "", password: "" });
+        }, 1200);
+      } else {
+        setAdminFormError(data.error || "Failed to create admin");
+      }
+    } catch (err) {
+      setAdminFormError("Server error");
     } finally {
       setLoading(false);
     }
@@ -621,12 +1007,21 @@ export default function AdminDashboard({ user, onLogout }) {
                     <td>{new Date(d.created_at).toLocaleDateString()}</td>
                     <td>{d.last_login ? new Date(d.last_login).toLocaleDateString() : "Never"}</td>
                     <td>
-                      <button
-                        onClick={() => handleDeleteUser(d.username, "driver")}
-                        className="btn btn-danger btn-sm"
-                      >
-                        <Trash2 className="w-4 h-4" /> Delete
-                      </button>
+                      <div className="action-group">
+                        <button
+                          onClick={() => fetchUserDetails(d.username)}
+                          className="btn btn-secondary btn-sm"
+                          disabled={loadingUserDetails}
+                        >
+                          <Edit className="w-4 h-4" /> Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(d.username, "driver")}
+                          className="btn btn-danger btn-sm"
+                        >
+                          <Trash2 className="w-4 h-4" /> Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -677,12 +1072,90 @@ export default function AdminDashboard({ user, onLogout }) {
                     <td>{new Date(s.created_at).toLocaleDateString()}</td>
                     <td>{s.last_login ? new Date(s.last_login).toLocaleDateString() : "Never"}</td>
                     <td>
-                      <button
-                        onClick={() => handleDeleteUser(s.username, "sponsor")}
-                        className="btn btn-danger btn-sm"
-                      >
-                        <Trash2 className="w-4 h-4" /> Delete
-                      </button>
+                      <div className="action-group">
+                        <button
+                          onClick={() => fetchUserDetails(s.username)}
+                          className="btn btn-secondary btn-sm"
+                          disabled={loadingUserDetails}
+                        >
+                          <Edit className="w-4 h-4" /> Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUser(s.username, "sponsor")}
+                          className="btn btn-danger btn-sm"
+                        >
+                          <Trash2 className="w-4 h-4" /> Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderAdmins = () => (
+    <div className="content-area">
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Admins Management</h2>
+          <button onClick={() => setShowAddAdminModal(true)} className="btn btn-primary">
+            <UserPlus className="w-5 h-5" /> Add Admin
+          </button>
+        </div>
+        {admins.length === 0 ? (
+          <div className="empty-state">
+            <Shield className="w-12 h-12" />
+            <p>No admins found</p>
+          </div>
+        ) : (
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Email</th>
+                  <th>Created</th>
+                  <th>Last Login</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {admins.map((a) => (
+                  <tr key={a.username}>
+                    <td>
+                      <div className="user-cell">
+                        <div className="user-avatar" style={{ background: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)" }}>
+                          {a.username.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="user-name">{a.username}</span>
+                      </div>
+                    </td>
+                    <td>{a.email}</td>
+                    <td>{new Date(a.created_at).toLocaleDateString()}</td>
+                    <td>{a.last_login ? new Date(a.last_login).toLocaleDateString() : "Never"}</td>
+                    <td>
+                      <div className="action-group">
+                        <button
+                          onClick={() => fetchUserDetails(a.username)}
+                          className="btn btn-secondary btn-sm"
+                          disabled={loadingUserDetails}
+                        >
+                          <Edit className="w-4 h-4" /> Edit
+                        </button>
+                        {a.username !== user?.username && (
+                          <button
+                            onClick={() => handleDeleteUser(a.username, "admin")}
+                            className="btn btn-danger btn-sm"
+                          >
+                            <Trash2 className="w-4 h-4" /> Delete
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -699,18 +1172,65 @@ export default function AdminDashboard({ user, onLogout }) {
 
     return (
       <div className="content-area">
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Transaction Reports</h2>
-            <div className="action-group">
-              <button onClick={generateCSVReport} className="btn btn-secondary">
-                <Download className="w-4 h-4" /> Export CSV
-              </button>
-              <button onClick={generatePDFReport} className="btn btn-secondary">
-                <Download className="w-4 h-4" /> Export PDF
-              </button>
+        {/* Report Type Tabs */}
+        <div className="report-tabs">
+          <button
+            className={`report-tab ${reportView === "transactions" ? "active" : ""}`}
+            onClick={() => setReportView("transactions")}
+          >
+            Transaction Reports
+          </button>
+          <button
+            className={`report-tab ${reportView === "salesBySponsor" ? "active" : ""}`}
+            onClick={() => {
+              setReportView("salesBySponsor");
+              loadSalesBySponsor();
+            }}
+          >
+            Sales by Sponsor
+          </button>
+          <button
+            className={`report-tab ${reportView === "salesByDriver" ? "active" : ""}`}
+            onClick={() => {
+              setReportView("salesByDriver");
+              loadSalesByDriver();
+            }}
+          >
+            Sales by Driver
+          </button>
+          <button
+            className={`report-tab ${reportView === "invoices" ? "active" : ""}`}
+            onClick={() => {
+              setReportView("invoices");
+              loadInvoices();
+            }}
+          >
+            Invoices
+          </button>
+          <button
+            className={`report-tab ${reportView === "auditLogs" ? "active" : ""}`}
+            onClick={() => {
+              setReportView("auditLogs");
+              loadAuditLogs();
+            }}
+          >
+            Audit Logs
+          </button>
+        </div>
+
+        {reportView === "transactions" && (
+          <div className="panel">
+            <div className="panel-header">
+              <h2>Transaction Reports</h2>
+              <div className="action-group">
+                <button onClick={generateCSVReport} className="btn btn-secondary">
+                  <Download className="w-4 h-4" /> Export CSV
+                </button>
+                <button onClick={generatePDFReport} className="btn btn-secondary">
+                  <Download className="w-4 h-4" /> Export PDF
+                </button>
+              </div>
             </div>
-          </div>
 
           <div className="filter-section">
             <div className="filter-grid">
@@ -828,6 +1348,1007 @@ export default function AdminDashboard({ user, onLogout }) {
             </table>
           </div>
         </div>
+        )}
+
+        {reportView === "salesBySponsor" && renderSalesBySponsor()}
+        {reportView === "salesByDriver" && renderSalesByDriver()}
+        {reportView === "invoices" && renderInvoices()}
+        {reportView === "auditLogs" && renderAuditLogs()}
+      </div>
+    );
+  };
+
+  const renderSalesBySponsor = () => {
+    return (
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Sales by Sponsor Report</h2>
+          <div className="action-group">
+            <button
+              onClick={loadSalesBySponsor}
+              className="btn btn-primary"
+              disabled={loadingSalesBySponsor}
+            >
+              {loadingSalesBySponsor ? "Loading..." : "Refresh"}
+            </button>
+            <button
+              onClick={() => {
+                const csvContent = generateSalesBySponsorCSV();
+                const blob = new Blob([csvContent], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `sales-by-sponsor-${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="btn btn-secondary"
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-section">
+          <div className="filter-grid">
+            <div className="form-group">
+              <label className="form-label">Sponsor</label>
+              <select
+                className="form-input"
+                value={salesBySponsorFilter.sponsor_username}
+                onChange={(e) =>
+                  setSalesBySponsorFilter({
+                    ...salesBySponsorFilter,
+                    sponsor_username: e.target.value,
+                  })
+                }
+              >
+                <option value="all">All Sponsors</option>
+                {sponsors.map((s) => (
+                  <option key={s.username} value={s.username}>
+                    {s.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Start Date</label>
+              <input
+                type="date"
+                className="form-input"
+                value={salesBySponsorFilter.startDate}
+                onChange={(e) =>
+                  setSalesBySponsorFilter({
+                    ...salesBySponsorFilter,
+                    startDate: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">End Date</label>
+              <input
+                type="date"
+                className="form-input"
+                value={salesBySponsorFilter.endDate}
+                onChange={(e) =>
+                  setSalesBySponsorFilter({
+                    ...salesBySponsorFilter,
+                    endDate: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">View</label>
+              <select
+                className="form-input"
+                value={salesBySponsorFilter.view}
+                onChange={(e) =>
+                  setSalesBySponsorFilter({
+                    ...salesBySponsorFilter,
+                    view: e.target.value,
+                  })
+                }
+              >
+                <option value="summary">Summary</option>
+                <option value="detailed">Detailed</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            className="btn btn-primary"
+            onClick={loadSalesBySponsor}
+            disabled={loadingSalesBySponsor}
+          >
+            {loadingSalesBySponsor ? "Loading..." : "Generate Report"}
+          </button>
+        </div>
+
+        {loadingSalesBySponsor ? (
+          <div className="loading-state">
+            <Activity className="w-8 h-8 animate-spin" />
+            <p>Loading report...</p>
+          </div>
+        ) : salesBySponsorData.length === 0 ? (
+          <div className="empty-state">
+            <Package className="w-12 h-12" />
+            <p>No data found. Adjust filters and try again.</p>
+          </div>
+        ) : salesBySponsorFilter.view === "summary" ? (
+          <>
+            <div className="report-summary">
+              <div className="summary-item">
+                <span>Total Sponsors:</span>
+                <strong>{salesBySponsorData.length}</strong>
+              </div>
+              <div className="summary-item">
+                <span>Total Points Redeemed:</span>
+                <strong>
+                  {salesBySponsorData
+                    .reduce((sum, item) => sum + item.total_points_redeemed, 0)
+                    .toLocaleString()}
+                </strong>
+              </div>
+              <div className="summary-item">
+                <span>Total Redemptions:</span>
+                <strong>
+                  {salesBySponsorData
+                    .reduce((sum, item) => sum + item.total_redemptions, 0)
+                    .toLocaleString()}
+                </strong>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Sponsor</th>
+                    <th>Total Points Redeemed</th>
+                    <th>Total Redemptions</th>
+                    <th>Unique Drivers</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesBySponsorData.map((item, idx) => (
+                    <tr key={idx}>
+                      <td>
+                        <div className="user-cell">
+                          <div className="user-avatar sponsor">
+                            {item.sponsor_username.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="user-name">{item.sponsor_username}</span>
+                        </div>
+                      </td>
+                      <td className="text-red">
+                        {item.total_points_redeemed.toLocaleString()}
+                      </td>
+                      <td>{item.total_redemptions.toLocaleString()}</td>
+                      <td>{item.unique_drivers.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="report-summary">
+              <div className="summary-item">
+                <span>Total Redemptions:</span>
+                <strong>{salesBySponsorData.length}</strong>
+              </div>
+              <div className="summary-item">
+                <span>Total Points Redeemed:</span>
+                <strong>
+                  {salesBySponsorData
+                    .reduce((sum, item) => sum + item.points_redeemed, 0)
+                    .toLocaleString()}
+                </strong>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Driver</th>
+                    <th>Sponsor</th>
+                    <th>Item</th>
+                    <th>Points Redeemed</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesBySponsorData.map((item) => (
+                    <tr key={item.id}>
+                      <td>#{item.id}</td>
+                      <td>{item.driver_username}</td>
+                      <td>
+                        <div className="user-cell">
+                          <div className="user-avatar sponsor">
+                            {item.sponsor_username.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="user-name">{item.sponsor_username}</span>
+                        </div>
+                      </td>
+                      <td>{item.item_title}</td>
+                      <td className="text-red">
+                        {item.points_redeemed.toLocaleString()}
+                      </td>
+                      <td>{new Date(item.date).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const generateSalesBySponsorCSV = () => {
+    if (salesBySponsorFilter.view === "summary") {
+      const headers = ["Sponsor", "Total Points Redeemed", "Total Redemptions", "Unique Drivers"];
+      const rows = salesBySponsorData.map((item) => [
+        item.sponsor_username,
+        item.total_points_redeemed,
+        item.total_redemptions,
+        item.unique_drivers,
+      ]);
+      return [
+        headers.join(","),
+        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+      ].join("\n");
+    } else {
+      const headers = ["ID", "Driver", "Sponsor", "Item", "Points Redeemed", "Date"];
+      const rows = salesBySponsorData.map((item) => [
+        item.id,
+        item.driver_username,
+        item.sponsor_username,
+        item.item_title,
+        item.points_redeemed,
+        new Date(item.date).toLocaleString(),
+      ]);
+      return [
+        headers.join(","),
+        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+      ].join("\n");
+    }
+  };
+
+  const renderSalesByDriver = () => {
+    return (
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Sales by Driver Report</h2>
+          <div className="action-group">
+            <button
+              onClick={loadSalesByDriver}
+              className="btn btn-primary"
+              disabled={loadingSalesByDriver}
+            >
+              {loadingSalesByDriver ? "Loading..." : "Refresh"}
+            </button>
+            <button
+              onClick={() => {
+                const csvContent = generateSalesByDriverCSV();
+                const blob = new Blob([csvContent], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `sales-by-driver-${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="btn btn-secondary"
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-section">
+          <div className="filter-grid">
+            <div className="form-group">
+              <label className="form-label">Sponsor</label>
+              <select
+                className="form-input"
+                value={salesByDriverFilter.sponsor_username}
+                onChange={(e) =>
+                  setSalesByDriverFilter({
+                    ...salesByDriverFilter,
+                    sponsor_username: e.target.value,
+                  })
+                }
+              >
+                <option value="all">All Sponsors</option>
+                {sponsors.map((s) => (
+                  <option key={s.username} value={s.username}>
+                    {s.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Driver</label>
+              <select
+                className="form-input"
+                value={salesByDriverFilter.driver_username}
+                onChange={(e) =>
+                  setSalesByDriverFilter({
+                    ...salesByDriverFilter,
+                    driver_username: e.target.value,
+                  })
+                }
+              >
+                <option value="all">All Drivers</option>
+                {drivers.map((d) => (
+                  <option key={d.username} value={d.username}>
+                    {d.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Start Date</label>
+              <input
+                type="date"
+                className="form-input"
+                value={salesByDriverFilter.startDate}
+                onChange={(e) =>
+                  setSalesByDriverFilter({
+                    ...salesByDriverFilter,
+                    startDate: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">End Date</label>
+              <input
+                type="date"
+                className="form-input"
+                value={salesByDriverFilter.endDate}
+                onChange={(e) =>
+                  setSalesByDriverFilter({
+                    ...salesByDriverFilter,
+                    endDate: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">View</label>
+              <select
+                className="form-input"
+                value={salesByDriverFilter.view}
+                onChange={(e) =>
+                  setSalesByDriverFilter({
+                    ...salesByDriverFilter,
+                    view: e.target.value,
+                  })
+                }
+              >
+                <option value="summary">Summary</option>
+                <option value="detailed">Detailed</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            className="btn btn-primary"
+            onClick={loadSalesByDriver}
+            disabled={loadingSalesByDriver}
+          >
+            {loadingSalesByDriver ? "Loading..." : "Generate Report"}
+          </button>
+        </div>
+
+        {loadingSalesByDriver ? (
+          <div className="loading-state">
+            <Activity className="w-8 h-8 animate-spin" />
+            <p>Loading report...</p>
+          </div>
+        ) : salesByDriverData.length === 0 ? (
+          <div className="empty-state">
+            <Users className="w-12 h-12" />
+            <p>No data found. Adjust filters and try again.</p>
+          </div>
+        ) : salesByDriverFilter.view === "summary" ? (
+          <>
+            <div className="report-summary">
+              <div className="summary-item">
+                <span>Total Drivers:</span>
+                <strong>{salesByDriverData.length}</strong>
+              </div>
+              <div className="summary-item">
+                <span>Total Points Redeemed:</span>
+                <strong>
+                  {salesByDriverData
+                    .reduce((sum, item) => sum + item.total_points_redeemed, 0)
+                    .toLocaleString()}
+                </strong>
+              </div>
+              <div className="summary-item">
+                <span>Total Redemptions:</span>
+                <strong>
+                  {salesByDriverData
+                    .reduce((sum, item) => sum + item.total_redemptions, 0)
+                    .toLocaleString()}
+                </strong>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Driver</th>
+                    <th>Total Points Redeemed</th>
+                    <th>Total Redemptions</th>
+                    <th>Unique Sponsors</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesByDriverData.map((item, idx) => (
+                    <tr key={idx}>
+                      <td>
+                        <div className="user-cell">
+                          <div className="user-avatar">
+                            {item.driver_username.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="user-name">{item.driver_username}</span>
+                        </div>
+                      </td>
+                      <td className="text-red">
+                        {item.total_points_redeemed.toLocaleString()}
+                      </td>
+                      <td>{item.total_redemptions.toLocaleString()}</td>
+                      <td>{item.unique_sponsors.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="report-summary">
+              <div className="summary-item">
+                <span>Total Redemptions:</span>
+                <strong>{salesByDriverData.length}</strong>
+              </div>
+              <div className="summary-item">
+                <span>Total Points Redeemed:</span>
+                <strong>
+                  {salesByDriverData
+                    .reduce((sum, item) => sum + item.points_redeemed, 0)
+                    .toLocaleString()}
+                </strong>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Driver</th>
+                    <th>Sponsor</th>
+                    <th>Item</th>
+                    <th>Points Redeemed</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {salesByDriverData.map((item) => (
+                    <tr key={item.id}>
+                      <td>#{item.id}</td>
+                      <td>
+                        <div className="user-cell">
+                          <div className="user-avatar">
+                            {item.driver_username.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="user-name">{item.driver_username}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="user-cell">
+                          <div className="user-avatar sponsor">
+                            {item.sponsor_username.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="user-name">{item.sponsor_username}</span>
+                        </div>
+                      </td>
+                      <td>{item.item_title}</td>
+                      <td className="text-red">
+                        {item.points_redeemed.toLocaleString()}
+                      </td>
+                      <td>{new Date(item.date).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderAuditLogs = () => {
+    const formatAuditLog = (log) => {
+      switch (log.event_type) {
+        case "driver_application":
+          return {
+            type: "Driver Application",
+            details: `${log.driver_username} - ${log.status === "accept" ? "Accepted" : "Rejected"}`,
+            sponsor: log.sponsor_username || "N/A",
+            driver: log.driver_username,
+            status: log.status,
+            reason: log.reason || "N/A",
+          };
+        case "point_change":
+          return {
+            type: "Point Change",
+            details: `${log.points > 0 ? "+" : ""}${log.points} points`,
+            sponsor: log.sponsor_username || "N/A",
+            driver: log.driver_username,
+            points: log.points,
+            reason: log.reason || "N/A",
+          };
+        case "password_change":
+          return {
+            type: "Password Change",
+            details: `${log.change_type || "update"}`,
+            user: log.username,
+            changeType: log.change_type || "update",
+          };
+        case "login_attempt":
+          return {
+            type: "Login Attempt",
+            details: log.status === "success" ? "Success" : "Failure",
+            user: log.username,
+            status: log.status,
+          };
+        default:
+          return {
+            type: log.event_type,
+            details: "N/A",
+          };
+      }
+    };
+
+    return (
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Audit Log Reports</h2>
+          <div className="action-group">
+            <button
+              onClick={loadAuditLogs}
+              className="btn btn-primary"
+              disabled={loadingAuditLogs}
+            >
+              {loadingAuditLogs ? "Loading..." : "Refresh"}
+            </button>
+            <button
+              onClick={() => {
+                const headers = ["Date", "Event Type", "User/Driver", "Sponsor", "Status/Points", "Reason/Details"];
+                const rows = auditLogData.map((log) => {
+                  const formatted = formatAuditLog(log);
+                  return [
+                    new Date(log.date).toLocaleString(),
+                    formatted.type,
+                    formatted.user || formatted.driver || "N/A",
+                    formatted.sponsor || "N/A",
+                    formatted.status || formatted.points || formatted.changeType || formatted.details,
+                    formatted.reason || formatted.details || "N/A",
+                  ];
+                });
+                const csvContent = [
+                  headers.join(","),
+                  ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+                ].join("\n");
+                const blob = new Blob([csvContent], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="btn btn-secondary"
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="filter-section">
+          <div className="filter-grid">
+            <div className="form-group">
+              <label className="form-label">Event Type</label>
+              <select
+                className="form-input"
+                value={auditLogFilter.event_type}
+                onChange={(e) =>
+                  setAuditLogFilter({
+                    ...auditLogFilter,
+                    event_type: e.target.value,
+                  })
+                }
+              >
+                <option value="all">All Events</option>
+                <option value="driver_application">Driver Applications</option>
+                <option value="point_change">Point Changes</option>
+                <option value="password_change">Password Changes</option>
+                <option value="login_attempt">Login Attempts</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Start Date</label>
+              <input
+                type="date"
+                className="form-input"
+                value={auditLogFilter.startDate}
+                onChange={(e) =>
+                  setAuditLogFilter({
+                    ...auditLogFilter,
+                    startDate: e.target.value,
+                  })
+                }
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">End Date</label>
+              <input
+                type="date"
+                className="form-input"
+                value={auditLogFilter.endDate}
+                onChange={(e) =>
+                  setAuditLogFilter({
+                    ...auditLogFilter,
+                    endDate: e.target.value,
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <button
+            className="btn btn-primary"
+            onClick={loadAuditLogs}
+            disabled={loadingAuditLogs}
+          >
+            {loadingAuditLogs ? "Loading..." : "Generate Report"}
+          </button>
+        </div>
+
+        {loadingAuditLogs ? (
+          <div className="loading-state">
+            <Activity className="w-8 h-8 animate-spin" />
+            <p>Loading audit logs...</p>
+          </div>
+        ) : auditLogData.length === 0 ? (
+          <div className="empty-state">
+            <FileText className="w-12 h-12" />
+            <p>No audit logs found. Adjust filters and try again.</p>
+          </div>
+        ) : (
+          <>
+            <div className="report-summary">
+              <div className="summary-item">
+                <span>Total Events:</span>
+                <strong>{auditLogData.length}</strong>
+              </div>
+              <div className="summary-item">
+                <span>Driver Applications:</span>
+                <strong>
+                  {auditLogData.filter((log) => log.event_type === "driver_application").length}
+                </strong>
+              </div>
+              <div className="summary-item">
+                <span>Point Changes:</span>
+                <strong>
+                  {auditLogData.filter((log) => log.event_type === "point_change").length}
+                </strong>
+              </div>
+              <div className="summary-item">
+                <span>Login Attempts:</span>
+                <strong>
+                  {auditLogData.filter((log) => log.event_type === "login_attempt").length}
+                </strong>
+              </div>
+            </div>
+
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Event Type</th>
+                    <th>User/Driver</th>
+                    <th>Sponsor</th>
+                    <th>Status/Points</th>
+                    <th>Reason/Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLogData.map((log) => {
+                    const formatted = formatAuditLog(log);
+                    return (
+                      <tr key={log.id}>
+                        <td>{new Date(log.date).toLocaleString()}</td>
+                        <td>
+                          <span className={`badge ${log.event_type}`}>
+                            {formatted.type}
+                          </span>
+                        </td>
+                        <td>{formatted.user || formatted.driver || "N/A"}</td>
+                        <td>{formatted.sponsor || "N/A"}</td>
+                        <td>
+                          {formatted.status ? (
+                            <span className={`badge ${formatted.status === "success" || formatted.status === "accept" ? "success" : "failure"}`}>
+                              {formatted.status === "accept" ? "Accepted" : formatted.status === "reject" ? "Rejected" : formatted.status === "success" ? "Success" : "Failure"}
+                            </span>
+                          ) : formatted.points ? (
+                            <span className={formatted.points > 0 ? "text-green" : "text-red"}>
+                              {formatted.points > 0 ? "+" : ""}{formatted.points}
+                            </span>
+                          ) : formatted.changeType ? (
+                            formatted.changeType
+                          ) : (
+                            formatted.details
+                          )}
+                        </td>
+                        <td>{formatted.reason || formatted.details || "N/A"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const generateSalesByDriverCSV = () => {
+    if (salesByDriverFilter.view === "summary") {
+      const headers = ["Driver", "Total Points Redeemed", "Total Redemptions", "Unique Sponsors"];
+      const rows = salesByDriverData.map((item) => [
+        item.driver_username,
+        item.total_points_redeemed,
+        item.total_redemptions,
+        item.unique_sponsors,
+      ]);
+      return [
+        headers.join(","),
+        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+      ].join("\n");
+    } else {
+      const headers = ["ID", "Driver", "Sponsor", "Item", "Points Redeemed", "Date"];
+      const rows = salesByDriverData.map((item) => [
+        item.id,
+        item.driver_username,
+        item.sponsor_username,
+        item.item_title,
+        item.points_redeemed,
+        new Date(item.date).toLocaleString(),
+      ]);
+      return [
+        headers.join(","),
+        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+      ].join("\n");
+    }
+  };
+
+  const renderInvoices = () => {
+    const generateInvoiceCSV = (invoice) => {
+      const headers = ["Driver", "Points Redeemed", "Redemptions", "Fee"];
+      const rows = invoice.drivers.map((driver) => [
+        driver.driver_username,
+        driver.pointsRedeemed,
+        driver.redemptions,
+        driver.fee.toFixed(2),
+      ]);
+      rows.push(["", "", "Total Fee:", invoice.totalFee.toFixed(2)]);
+      return [
+        `Invoice for ${invoice.sponsor_username}`,
+        `Date Range: ${invoice.startDate || "All"} to ${invoice.endDate || "All"}`,
+        "",
+        headers.join(","),
+        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+      ].join("\n");
+    };
+
+    return (
+      <div className="content-area">
+        <div className="panel">
+          <div className="panel-header">
+            <h2>Invoice Generation</h2>
+            <div className="action-group">
+              <button
+                onClick={loadInvoices}
+                className="btn btn-primary"
+                disabled={loadingInvoices}
+              >
+                {loadingInvoices ? "Loading..." : "Generate Invoices"}
+              </button>
+            </div>
+          </div>
+
+          <div className="filter-section">
+            <div className="filter-grid">
+              <div className="form-group">
+                <label className="form-label">Sponsor</label>
+                <select
+                  className="form-input"
+                  value={invoiceFilter.sponsor_username}
+                  onChange={(e) =>
+                    setInvoiceFilter({
+                      ...invoiceFilter,
+                      sponsor_username: e.target.value,
+                    })
+                  }
+                >
+                  <option value="all">All Sponsors</option>
+                  {sponsors.map((s) => (
+                    <option key={s.username} value={s.username}>
+                      {s.username}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Start Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={invoiceFilter.startDate}
+                  onChange={(e) =>
+                    setInvoiceFilter({
+                      ...invoiceFilter,
+                      startDate: e.target.value,
+                    })
+                  }
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">End Date</label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={invoiceFilter.endDate}
+                  onChange={(e) =>
+                    setInvoiceFilter({
+                      ...invoiceFilter,
+                      endDate: e.target.value,
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          {loadingInvoices ? (
+            <div className="loading-state">
+              <Activity className="w-8 h-8 animate-spin" />
+              <p>Generating invoices...</p>
+            </div>
+          ) : invoiceData.length === 0 ? (
+            <div className="empty-state">
+              <FileText className="w-12 h-12" />
+              <p>No invoices found. Adjust filters and try again.</p>
+            </div>
+          ) : (
+            <div className="invoice-list">
+              {invoiceData.map((invoice, idx) => (
+                <div key={idx} className="invoice-card">
+                  <div className="invoice-header">
+                    <div>
+                      <h3>Invoice for {invoice.sponsor_username}</h3>
+                      <p className="invoice-date-range">
+                        {invoice.startDate && invoice.endDate
+                          ? `${new Date(invoice.startDate).toLocaleDateString()} - ${new Date(invoice.endDate).toLocaleDateString()}`
+                          : invoice.startDate
+                          ? `From ${new Date(invoice.startDate).toLocaleDateString()}`
+                          : invoice.endDate
+                          ? `Until ${new Date(invoice.endDate).toLocaleDateString()}`
+                          : "All Time"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const csvContent = generateInvoiceCSV(invoice);
+                        const blob = new Blob([csvContent], { type: "text/csv" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `invoice-${invoice.sponsor_username}-${new Date().toISOString().split('T')[0]}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="btn btn-secondary btn-sm"
+                    >
+                      <Download className="w-4 h-4" /> Export CSV
+                    </button>
+                  </div>
+
+                  <div className="invoice-summary">
+                    <div className="summary-item">
+                      <span>Total Points Redeemed:</span>
+                      <strong>{invoice.totalPointsRedeemed.toLocaleString()}</strong>
+                    </div>
+                    <div className="summary-item">
+                      <span>Total Redemptions:</span>
+                      <strong>{invoice.totalRedemptions.toLocaleString()}</strong>
+                    </div>
+                    <div className="summary-item highlight">
+                      <span>Total Fee Due:</span>
+                      <strong>${invoice.totalFee.toFixed(2)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="table-container">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Driver</th>
+                          <th>Points Redeemed</th>
+                          <th>Redemptions</th>
+                          <th>Fee Generated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {invoice.drivers.map((driver, driverIdx) => (
+                          <tr key={driverIdx}>
+                            <td>
+                              <div className="user-cell">
+                                <div className="user-avatar">
+                                  {driver.driver_username.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="user-name">{driver.driver_username}</span>
+                              </div>
+                            </td>
+                            <td>{driver.pointsRedeemed.toLocaleString()}</td>
+                            <td>{driver.redemptions.toLocaleString()}</td>
+                            <td className="text-green">${driver.fee.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                        <tr className="invoice-total-row">
+                          <td colSpan="3" style={{ textAlign: "right", fontWeight: 700 }}>
+                            Total Fee Due:
+                          </td>
+                          <td className="text-green" style={{ fontWeight: 700 }}>
+                            ${invoice.totalFee.toFixed(2)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -888,6 +2409,7 @@ export default function AdminDashboard({ user, onLogout }) {
             { id: "overview", label: "Overview", icon: Activity },
             { id: "drivers", label: "Drivers", icon: Users },
             { id: "sponsors", label: "Sponsors", icon: Package },
+            { id: "admins", label: "Admins", icon: Shield },
             { id: "reports", label: "Reports", icon: FileText },
             { id: "catalog", label: "Catalog", icon: ShoppingCart },
             { id: "settings", label: "Settings", icon: Settings },
@@ -932,6 +2454,7 @@ export default function AdminDashboard({ user, onLogout }) {
         {activeTab === "overview" && renderOverview()}
         {activeTab === "drivers" && renderDrivers()}
         {activeTab === "sponsors" && renderSponsors()}
+        {activeTab === "admins" && renderAdmins()}
         {activeTab === "reports" && renderReports()}
         {activeTab === "catalog" && renderCatalog()}
         {activeTab === "settings" && (
@@ -1075,6 +2598,192 @@ export default function AdminDashboard({ user, onLogout }) {
           formSuccess={sponsorFormSuccess}
           roleLabel="Sponsor"
         />
+      )}
+
+      {showAddAdminModal && (
+        <AddUserModal
+          onClose={() => {
+            setShowAddAdminModal(false);
+            setAdminFormError("");
+            setAdminFormSuccess("");
+          }}
+          newUser={newAdmin}
+          handleInputChange={(e) => setNewAdmin({ ...newAdmin, [e.target.name]: e.target.value })}
+          handleAddUser={handleAddAdmin}
+          loading={loading}
+          formError={adminFormError}
+          formSuccess={adminFormSuccess}
+          roleLabel="Admin"
+        />
+      )}
+
+      {showEditUserModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: "600px" }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Edit User: {editingUser?.username || "Loading..."}</h3>
+              <button
+                onClick={() => {
+                  setShowEditUserModal(false);
+                  setEditingUser(null);
+                  setEditUserForm({ email: "", newPassword: "", point_alerts_enabled: true });
+                  setEditUserError("");
+                  setEditUserSuccess("");
+                }}
+                className="modal-close"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              {loadingUserDetails ? (
+                <div className="loading-state">
+                  <Activity className="w-8 h-8 animate-spin" />
+                  <p>Loading user details...</p>
+                </div>
+              ) : !editingUser ? (
+                <div className="empty-state">
+                  <p>No user data available</p>
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Username</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editingUser.username || ""}
+                      disabled
+                      style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+                    />
+                    <p className="form-help">Username cannot be changed</p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Role</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editingUser.role || ""}
+                      disabled
+                      style={{ background: "#f5f5f5", cursor: "not-allowed" }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Email</label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={editUserForm.email}
+                      onChange={(e) =>
+                        setEditUserForm({ ...editUserForm, email: e.target.value })
+                      }
+                      disabled={loading}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">New Password (leave blank to keep current)</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      value={editUserForm.newPassword}
+                      onChange={(e) =>
+                        setEditUserForm({ ...editUserForm, newPassword: e.target.value })
+                      }
+                      disabled={loading}
+                      placeholder="Enter new password (min 8 characters)"
+                    />
+                    <p className="form-help">Only enter if you want to reset the password</p>
+                  </div>
+
+                  {editingUser.role === "driver" && (
+                    <div className="form-group">
+                      <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="checkbox"
+                          checked={editUserForm.point_alerts_enabled}
+                          onChange={(e) =>
+                            setEditUserForm({ ...editUserForm, point_alerts_enabled: e.target.checked })
+                          }
+                          disabled={loading}
+                        />
+                        Point Alerts Enabled
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label className="form-label">Account Information</label>
+                    <div style={{ background: "#f9fafb", padding: "12px", borderRadius: "8px", fontSize: "14px" }}>
+                      <p><strong>Created:</strong> {editingUser.created_at ? new Date(editingUser.created_at).toLocaleString() : "N/A"}</p>
+                      <p><strong>Last Login:</strong> {editingUser.last_login ? new Date(editingUser.last_login).toLocaleString() : "Never"}</p>
+                      {editingUser.failed_attempts > 0 && (
+                        <p style={{ color: "#dc2626" }}>
+                          <strong>Failed Attempts:</strong> {editingUser.failed_attempts}
+                        </p>
+                      )}
+                      {editingUser.locked_until && new Date(editingUser.locked_until) > new Date() && (
+                        <div style={{ marginTop: "8px" }}>
+                          <p style={{ color: "#dc2626" }}>
+                            <strong>Account Locked Until:</strong> {new Date(editingUser.locked_until).toLocaleString()}
+                          </p>
+                          <button
+                            onClick={handleUnlockAccount}
+                            className="btn btn-secondary btn-sm"
+                            style={{ marginTop: "8px" }}
+                            disabled={loading}
+                          >
+                            Unlock Account
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {editUserError && (
+                    <div className="alert alert-error">
+                      <XCircle className="w-5 h-5" />
+                      <p>{editUserError}</p>
+                    </div>
+                  )}
+
+                  {editUserSuccess && (
+                    <div className="alert alert-success">
+                      <CheckCircle className="w-5 h-5" />
+                      <p>{editUserSuccess}</p>
+                    </div>
+                  )}
+
+                  <div className="modal-actions">
+                    <button
+                      onClick={() => {
+                        setShowEditUserModal(false);
+                        setEditingUser(null);
+                        setEditUserForm({ email: "", newPassword: "", point_alerts_enabled: true });
+                        setEditUserError("");
+                        setEditUserSuccess("");
+                      }}
+                      className="btn btn-secondary"
+                      disabled={loading}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleUpdateUser}
+                      className="btn btn-primary"
+                      disabled={loading || !editingUser}
+                    >
+                      {loading ? "Updating..." : "Update User"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       <style>{`
@@ -1605,6 +3314,103 @@ export default function AdminDashboard({ user, onLogout }) {
           flex: 1;
         }
 
+        /* ===== REPORT TABS ===== */
+        .report-tabs {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 24px;
+          border-bottom: 2px solid #e5e7eb;
+        }
+
+        .report-tab {
+          padding: 12px 24px;
+          background: transparent;
+          border: none;
+          border-bottom: 2px solid transparent;
+          color: #6b7280;
+          font-weight: 600;
+          font-size: 14px;
+          cursor: pointer;
+          transition: all 0.2s;
+          margin-bottom: -2px;
+        }
+
+        .report-tab:hover {
+          color: #3b82f6;
+        }
+
+        .report-tab.active {
+          color: #3b82f6;
+          border-bottom-color: #3b82f6;
+        }
+
+        /* ===== INVOICES ===== */
+        .invoice-list {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        .invoice-card {
+          background: white;
+          border: 2px solid #e5e7eb;
+          border-radius: 12px;
+          padding: 24px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .invoice-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 20px;
+          padding-bottom: 16px;
+          border-bottom: 2px solid #e5e7eb;
+        }
+
+        .invoice-header h3 {
+          font-size: 22px;
+          font-weight: 700;
+          color: #1f2937;
+          margin-bottom: 4px;
+        }
+
+        .invoice-date-range {
+          color: #6b7280;
+          font-size: 14px;
+        }
+
+        .invoice-summary {
+          display: flex;
+          gap: 32px;
+          padding: 20px;
+          background: #f9fafb;
+          border-radius: 8px;
+          margin-bottom: 20px;
+        }
+
+        .invoice-summary .summary-item {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .invoice-summary .summary-item.highlight {
+          margin-left: auto;
+          padding-left: 32px;
+          border-left: 2px solid #3b82f6;
+        }
+
+        .invoice-summary .summary-item.highlight strong {
+          font-size: 24px;
+          color: #3b82f6;
+        }
+
+        .invoice-total-row {
+          background: #f9fafb;
+          border-top: 2px solid #e5e7eb;
+        }
+
         /* ===== FILTERS ===== */
         .filter-section {
           background: #f9fafb;
@@ -1664,6 +3470,36 @@ export default function AdminDashboard({ user, onLogout }) {
         .badge.redeem {
           background: #dbeafe;
           color: #2563eb;
+        }
+
+        .badge.driver_application {
+          background: #fef3c7;
+          color: #d97706;
+        }
+
+        .badge.point_change {
+          background: #dbeafe;
+          color: #2563eb;
+        }
+
+        .badge.password_change {
+          background: #e0e7ff;
+          color: #6366f1;
+        }
+
+        .badge.login_attempt {
+          background: #f3e8ff;
+          color: #9333ea;
+        }
+
+        .badge.success {
+          background: #dcfce7;
+          color: #16a34a;
+        }
+
+        .badge.failure {
+          background: #fee2e2;
+          color: #dc2626;
         }
 
         .text-green { color: #16a34a; font-weight: 600; }
