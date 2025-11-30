@@ -1,7 +1,7 @@
 // App/frontend/src/components/DriverView.jsx
 
 import React, { useEffect, useState } from "react";
-import { Users, User, Lock, Archive, ShoppingCart, Package, Award, Menu, X, LogOut, Activity, TrendingUp, CheckCircle, XCircle, AlertCircle, Bell, Receipt, XCircle as XCircleIcon, Edit, Trash2 } from "lucide-react";
+import { Users, User, Lock, Archive, ShoppingCart, Package, Award, Menu, X, LogOut, Activity, TrendingUp, CheckCircle, XCircle, AlertCircle, Bell, Receipt, XCircle as XCircleIcon, Edit, Trash2, Shield } from "lucide-react";
 
 // Stats Card Component
 const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
@@ -16,7 +16,7 @@ const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
   </div>
 );
 
-export default function DriverView({ user, onLogout }) {
+export default function DriverView({ user, onLogout, isAssumedBySponsor = false, actualSponsor = null }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [organizations, setOrganizations] = useState([]);
   const [selectedOrg, setSelectedOrg] = useState("");
@@ -749,6 +749,39 @@ export default function DriverView({ user, onLogout }) {
       {/* Main Content */}
       <main className="main-content">
         <header className="page-header">
+        {/* Sponsor Assumption Banner */}
+        {isAssumedBySponsor && actualSponsor && (
+          <div style={{
+            background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+            border: "2px solid #f59e0b",
+            borderRadius: "12px",
+            padding: "16px 24px",
+            margin: "0 32px 24px 32px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            boxShadow: "0 4px 12px rgba(245, 158, 11, 0.2)"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <Shield className="w-6 h-6" style={{ color: "#d97706" }} />
+              <div>
+                <p style={{ margin: 0, fontWeight: 700, color: "#92400e", fontSize: "16px" }}>
+                  Sponsor Control Active
+                </p>
+                <p style={{ margin: "4px 0 0 0", fontSize: "14px", color: "#78350f" }}>
+                  You are viewing and controlling <strong>{user.username}</strong>'s account as sponsor <strong>{actualSponsor.username}</strong>
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onLogout}
+              className="btn btn-secondary"
+              style={{ background: "white", border: "2px solid #f59e0b" }}
+            >
+              <X className="w-4 h-4" /> Stop Assuming
+            </button>
+          </div>
+        )}
           <div>
             <h1 className="page-title">
               {view === "dashboard" ? "Dashboard" : 
