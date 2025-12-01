@@ -132,7 +132,3 @@ EBAY_CLIENT_SECRET=your_client_secret_here
     </div>
   );
 }
-
-// To use this component, temporarily add it to your SponsorView:
-// import EbayApiTest from './EbayApiTest';
-// Then add <EbayApiTest /> in the catalog management view

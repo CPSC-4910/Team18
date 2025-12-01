@@ -91,7 +91,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// IMPORTANT: Define user routes BEFORE authRouter to avoid route conflicts
 // GET /api/users/:username - Get user details (admin only)
 app.get("/api/users/:username", async (req, res) => {
   try {
@@ -146,7 +145,7 @@ app.use(sponsorRouter);
 // Driver routes
 app.use("/api/driver", driverRouter);
 
-// Applications (the NEW system)
+// Applications
 app.use("/api/applications", applicationsRouter);
 
 app.use("/api/memberships", membershipsRouter);
@@ -238,7 +237,7 @@ app.patch("/api/users/:username", async (req, res) => {
       }
     }
 
-    // Reset password if provided (admin can reset without current password)
+    // Reset password if provided
     if (newPassword !== undefined && newPassword !== null && newPassword !== "") {
       if (newPassword.length < 8) {
         return res.status(400).json({ error: "Password must be at least 8 characters" });

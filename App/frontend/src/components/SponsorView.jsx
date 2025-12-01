@@ -1,5 +1,4 @@
 // App/frontend/src/components/SponsorView.jsx
-// WITH ACCOUNT MANAGEMENT TAB
 
 import React, { useEffect, useState } from "react";
 import {
@@ -313,7 +312,6 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
     if (activeOrg && profile) {
       loadOrganizationDrivers();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOrg, profile]);
 
   // Create new driver
@@ -1090,7 +1088,6 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
   };
 
   // ============= VIEWS =============
-  // All views are now handled in the main return statement below
 
   // Calculate stats
   const totalDrivers = drivers.length;
