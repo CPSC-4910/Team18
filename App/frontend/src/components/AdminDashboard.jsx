@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Users, Package, Award, Activity, Settings, LogOut, Menu, X, 
   TrendingUp, AlertCircle, ShoppingCart, UserPlus, CheckCircle, 
-  XCircle, Trash2, Download, FileText, User, Lock, Edit, Shield
+  XCircle, Trash2, Download, FileText, User, Lock, Edit, Shield, Upload
 } from 'lucide-react';
 
 // Modal Component
@@ -204,6 +204,12 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
   
   const [reportView, setReportView] = useState("transactions"); // "transactions", "salesBySponsor", "salesByDriver", "invoices", or "auditLogs"
 
+  // Bulk upload state
+  const [bulkUploadFile, setBulkUploadFile] = useState(null);
+  const [bulkUploadResults, setBulkUploadResults] = useState(null);
+  const [loadingBulkUpload, setLoadingBulkUpload] = useState(false);
+  const [bulkUploadError, setBulkUploadError] = useState("");
+
   // Account Management
   const [editEmail, setEditEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -236,6 +242,10 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
     if (activeTab === "catalog") loadCatalog(searchTerm);
     if (activeTab === "settings") {
       setEditEmail(user?.email || "");
+    }
+    if (activeTab === "bulk-upload") {
+      setBulkUploadResults(null);
+      setBulkUploadError("");
     }
   }, [activeTab, user]);
 
@@ -804,6 +814,279 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
       return matchesType && matchesUsername && matchesStartDate && matchesEndDate;
     });
   };
+
+  // ===== Bulk Upload =====
+  const handleBulkUpload = async () => {
+    if (!bulkUploadFile) {
+      setBulkUploadError("Please select a file to upload");
+      return;
+    }
+
+    setLoadingBulkUpload(true);
+    setBulkUploadError("");
+    setBulkUploadResults(null);
+
+    try {
+      const fileContent = await bulkUploadFile.text();
+      
+      const response = await fetch("/api/organizations/bulk-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileContent,
+          adminUsername: user?.username,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setBulkUploadResults(data);
+        // Refresh drivers and sponsors lists
+        if (data.summary.driversCreated > 0) fetchDrivers();
+        if (data.summary.sponsorsCreated > 0) fetchSponsors();
+      } else {
+        setBulkUploadError(data.error || "Failed to process bulk upload");
+      }
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      setBulkUploadError("Server error: " + err.message);
+    } finally {
+      setLoadingBulkUpload(false);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type (text or CSV files)
+      const isValidFile = 
+        file.type.includes("text") || 
+        file.type.includes("csv") ||
+        file.name.endsWith(".txt") || 
+        file.name.endsWith(".csv");
+      
+      if (!isValidFile) {
+        setBulkUploadError("Please upload a text file (.txt) or CSV file (.csv)");
+        return;
+      }
+      setBulkUploadFile(file);
+      setBulkUploadError("");
+      setBulkUploadResults(null);
+    }
+  };
+
+  const renderBulkUpload = () => (
+    <div className="content-area">
+      <div className="panel">
+        <div className="panel-header">
+          <h2>Bulk Upload Users</h2>
+        </div>
+
+        <div style={{ marginBottom: "24px" }}>
+          <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px" }}>File Format</h3>
+          <div style={{ background: "#f9fafb", padding: "16px", borderRadius: "8px", marginBottom: "16px" }}>
+            <p style={{ marginBottom: "8px", fontWeight: 600 }}>Format: <code>&lt;type&gt;|organization name|first name|last name|email address</code></p>
+            <div style={{ marginTop: "12px" }}>
+              <p style={{ marginBottom: "4px" }}><strong>Type Values:</strong></p>
+              <ul style={{ marginLeft: "20px", marginTop: "4px" }}>
+                <li><code>O</code> - Organization Name (ADMIN user only)</li>
+                <li><code>D</code> - Driver Information</li>
+                <li><code>S</code> - Sponsor Information</li>
+              </ul>
+            </div>
+            <div style={{ marginTop: "12px" }}>
+              <p style={{ marginBottom: "4px" }}><strong>Rules:</strong></p>
+              <ul style={{ marginLeft: "20px", marginTop: "4px", fontSize: "14px" }}>
+                <li>An organization must exist or be created via an "O" record before it can be used</li>
+                <li>Sponsors cannot use the "O" type and must omit the organization name</li>
+                <li>Data cannot contain the pipe "|" delimiter</li>
+                <li>Any type other than O, D, or S is an error</li>
+                <li>Errors are reported but processing continues</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Select File</label>
+          <input
+            type="file"
+            accept=".txt,.csv,text/plain,text/csv"
+            onChange={handleFileChange}
+            className="form-input"
+            disabled={loadingBulkUpload}
+            style={{ padding: "8px" }}
+          />
+          {bulkUploadFile && (
+            <p className="form-help" style={{ color: "#16a34a", marginTop: "8px" }}>
+              Selected: {bulkUploadFile.name} ({(bulkUploadFile.size / 1024).toFixed(2)} KB)
+            </p>
+          )}
+        </div>
+
+        {bulkUploadError && (
+          <div className="alert alert-error">
+            <XCircle className="w-5 h-5" />
+            <p>{bulkUploadError}</p>
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: "24px" }}>
+          <button
+            onClick={handleBulkUpload}
+            className="btn btn-primary"
+            disabled={!bulkUploadFile || loadingBulkUpload}
+          >
+            {loadingBulkUpload ? (
+              <>
+                <Activity className="w-5 h-5 animate-spin" style={{ marginRight: "8px" }} />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Upload className="w-5 h-5" style={{ marginRight: "8px" }} />
+                Upload & Process
+              </>
+            )}
+          </button>
+          {bulkUploadFile && (
+            <button
+              onClick={() => {
+                setBulkUploadFile(null);
+                setBulkUploadResults(null);
+                setBulkUploadError("");
+              }}
+              className="btn btn-secondary"
+              disabled={loadingBulkUpload}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {bulkUploadResults && (
+          <div style={{ marginTop: "32px" }}>
+            <h3 style={{ fontSize: "18px", fontWeight: 600, marginBottom: "16px" }}>Upload Results</h3>
+            
+            <div style={{ 
+              background: "#f0fdf4", 
+              border: "1px solid #bbf7d0", 
+              borderRadius: "8px", 
+              padding: "16px", 
+              marginBottom: "24px" 
+            }}>
+              <h4 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px", color: "#16a34a" }}>
+                Summary
+              </h4>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                <div>
+                  <p style={{ fontSize: "14px", color: "#6b7280" }}>Total Lines</p>
+                  <p style={{ fontSize: "20px", fontWeight: 700, color: "#1f2937" }}>
+                    {bulkUploadResults.summary.totalLines}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ fontSize: "14px", color: "#6b7280" }}>Organizations Created</p>
+                  <p style={{ fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+                    {bulkUploadResults.summary.organizationsCreated}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ fontSize: "14px", color: "#6b7280" }}>Drivers Created</p>
+                  <p style={{ fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+                    {bulkUploadResults.summary.driversCreated}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ fontSize: "14px", color: "#6b7280" }}>Sponsors Created</p>
+                  <p style={{ fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+                    {bulkUploadResults.summary.sponsorsCreated}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ fontSize: "14px", color: "#6b7280" }}>Successful</p>
+                  <p style={{ fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+                    {bulkUploadResults.summary.successCount}
+                  </p>
+                </div>
+                <div>
+                  <p style={{ fontSize: "14px", color: "#6b7280" }}>Errors</p>
+                  <p style={{ fontSize: "20px", fontWeight: 700, color: "#dc2626" }}>
+                    {bulkUploadResults.summary.errorCount}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {bulkUploadResults.results.success.length > 0 && (
+              <div style={{ marginBottom: "24px" }}>
+                <h4 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px", color: "#16a34a" }}>
+                  Successful Operations ({bulkUploadResults.results.success.length})
+                </h4>
+                <div style={{ 
+                  background: "#f9fafb", 
+                  border: "1px solid #e5e7eb", 
+                  borderRadius: "8px", 
+                  maxHeight: "300px", 
+                  overflowY: "auto",
+                  padding: "12px"
+                }}>
+                  {bulkUploadResults.results.success.map((item, idx) => (
+                    <div key={idx} style={{ 
+                      padding: "8px", 
+                      marginBottom: "4px", 
+                      background: "white", 
+                      borderRadius: "4px",
+                      fontSize: "14px"
+                    }}>
+                      <span style={{ fontWeight: 600, color: "#6b7280" }}>Line {item.line}:</span>{" "}
+                      <span style={{ color: "#1f2937" }}>{item.content}</span>
+                      <div style={{ marginTop: "4px", color: "#16a34a", fontSize: "13px" }}>
+                        ✓ {item.message}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {bulkUploadResults.results.errors.length > 0 && (
+              <div>
+                <h4 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px", color: "#dc2626" }}>
+                  Errors ({bulkUploadResults.results.errors.length})
+                </h4>
+                <div style={{ 
+                  background: "#fef2f2", 
+                  border: "1px solid #fecaca", 
+                  borderRadius: "8px", 
+                  maxHeight: "400px", 
+                  overflowY: "auto",
+                  padding: "12px"
+                }}>
+                  {bulkUploadResults.results.errors.map((item, idx) => (
+                    <div key={idx} style={{ 
+                      padding: "8px", 
+                      marginBottom: "4px", 
+                      background: "white", 
+                      borderRadius: "4px",
+                      fontSize: "14px"
+                    }}>
+                      <span style={{ fontWeight: 600, color: "#6b7280" }}>Line {item.line}:</span>{" "}
+                      <span style={{ color: "#1f2937" }}>{item.content}</span>
+                      <div style={{ marginTop: "4px", color: "#dc2626", fontSize: "13px" }}>
+                        ✗ {item.error}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   // ===== Account Management =====
   async function updateEmail() {
@@ -2443,6 +2726,7 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
             { id: "drivers", label: "Drivers", icon: Users },
             { id: "sponsors", label: "Sponsors", icon: Package },
             { id: "admins", label: "Admins", icon: Shield },
+            { id: "bulk-upload", label: "Bulk Upload", icon: Upload },
             { id: "reports", label: "Reports", icon: FileText },
             { id: "catalog", label: "Catalog", icon: ShoppingCart },
             { id: "settings", label: "Settings", icon: Settings },
@@ -2488,6 +2772,7 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
         {activeTab === "drivers" && renderDrivers()}
         {activeTab === "sponsors" && renderSponsors()}
         {activeTab === "admins" && renderAdmins()}
+        {activeTab === "bulk-upload" && renderBulkUpload()}
         {activeTab === "reports" && renderReports()}
         {activeTab === "catalog" && renderCatalog()}
         {activeTab === "settings" && (
