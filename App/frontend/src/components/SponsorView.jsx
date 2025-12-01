@@ -38,7 +38,7 @@ const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
   </div>
 );
 
-export default function SponsorView({ user, onLogout, isImpersonated = false, originalAdmin = null, onExitImpersonation = null }) {
+export default function SponsorView({ user, onLogout, isImpersonated = false, originalAdmin = null, onExitImpersonation = null, onImpersonateDriver = null }) {
   const [profile, setProfile] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -1024,7 +1024,15 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
   const catalogItems = myCatalog.length;
 
   // -------- DASHBOARD --------
+  if (!user || !user.username) {
     return (
+      <div style={{ padding: "20px", textAlign: "center" }}>
+        <p>Loading user data...</p>
+      </div>
+    );
+  }
+
+  return (
     <div className="sponsor-dashboard">
       {/* Impersonation Banner */}
       {isImpersonated && originalAdmin && (
@@ -1313,6 +1321,21 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
                                 <td className="text-green">{driverPoints[driver.driver_username] || 0} pts</td>
                                 <td>
                                   <div className="action-group">
+                                    {onImpersonateDriver && (
+                                      <button
+                                        onClick={() => onImpersonateDriver({
+                                          username: driver.driver_username,
+                                          email: driverDetails?.email || driver.email || "",
+                                          role: "driver",
+                                          last_login: null,
+                                          created_at: null,
+                                        })}
+                                        className="btn btn-primary btn-sm"
+                                        title={`View site as ${driver.driver_username}`}
+                                      >
+                                        <User className="w-4 h-4" /> View As
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => openPurchaseForDriver(driver.driver_username)}
                                       className="btn btn-primary btn-sm"

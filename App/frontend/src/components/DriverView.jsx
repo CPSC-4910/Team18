@@ -110,6 +110,7 @@ export default function DriverView({ user, onLogout, isImpersonated = false, ori
   // Load My Applications
   // ------------------------------------------------------------
   async function loadMyApplications() {
+    if (!user || !user.username) return;
     try {
       const res = await fetch(`/api/applications/by-driver/${user.username}`);
       const data = await res.json();
@@ -123,6 +124,7 @@ export default function DriverView({ user, onLogout, isImpersonated = false, ori
   // Load My Accepted Memberships + Points
   // ------------------------------------------------------------
   async function loadMyMemberships() {
+    if (!user || !user.username) return;
     try {
       const res = await fetch(`/api/memberships/${user.username}`);
       const data = await res.json();
@@ -704,6 +706,14 @@ export default function DriverView({ user, onLogout, isImpersonated = false, ori
   const acceptedApps = apps.filter(app => app.status === "accepted").length;
 
   // Main render with sidebar
+  if (!user || !user.username) {
+    return (
+      <div style={{ padding: "20px", textAlign: "center" }}>
+        <p>Loading user data...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="driver-dashboard">
       {/* Impersonation Banner */}
@@ -725,7 +735,7 @@ export default function DriverView({ user, onLogout, isImpersonated = false, ori
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <Shield className="w-5 h-5" />
             <span style={{ fontWeight: 600 }}>
-              Viewing as <strong>{user.username}</strong> (Admin: {originalAdmin.username})
+              Viewing as <strong>{user.username}</strong> ({originalAdmin.role === "admin" ? "Admin" : "Sponsor"}: {originalAdmin.username})
             </span>
           </div>
           <button
