@@ -96,11 +96,11 @@ export default function AboutView() {
               </div>
               <div className="info-item">
                 <span className="info-label">Version #</span>
-                <span className="info-value">6</span>
+                <span className="info-value">11</span>
               </div>
               <div className="info-item">
                 <span className="info-label">Release Date</span>
-                <span className="info-value">11/04/2025</span>
+                <span className="info-value">11/30/2025</span>
               </div>
             </div>
           </div>
