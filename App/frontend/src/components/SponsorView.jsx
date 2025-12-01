@@ -23,6 +23,7 @@ import {
   UserPlus,
   Edit,
   Shield,
+  Upload,
 } from "lucide-react";
 
 // Stats Card Component
@@ -108,6 +109,12 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
   const [purchaseCatalog, setPurchaseCatalog] = useState([]); // Catalog items for purchase
   const [loadingPurchaseCatalog, setLoadingPurchaseCatalog] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+
+  // Bulk Upload state
+  const [bulkUploadFile, setBulkUploadFile] = useState(null);
+  const [bulkUploadResults, setBulkUploadResults] = useState(null);
+  const [loadingBulkUpload, setLoadingBulkUpload] = useState(false);
+  const [bulkUploadError, setBulkUploadError] = useState("");
 
   // UI view
   const [view, setView] = useState("dashboard");
@@ -1014,6 +1021,74 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
     }
   }
 
+  // ============= BULK UPLOAD =============
+  const handleBulkUpload = async () => {
+    if (!bulkUploadFile) {
+      setBulkUploadError("Please select a file to upload");
+      return;
+    }
+
+    if (!activeOrg) {
+      setBulkUploadError("No active organization found. Please set an active organization first.");
+      return;
+    }
+
+    setLoadingBulkUpload(true);
+    setBulkUploadError("");
+    setBulkUploadResults(null);
+
+    try {
+      const fileContent = await bulkUploadFile.text();
+      
+      const response = await fetch("/api/sponsor/bulk-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileContent,
+          sponsorUsername: user?.username,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setBulkUploadResults(data);
+        // Refresh drivers list
+        if (data.summary.driversCreated > 0 && activeOrg) {
+          loadDrivers(activeOrg.id);
+          loadOrganizationDrivers();
+        }
+      } else {
+        setBulkUploadError(data.error || "Failed to process bulk upload");
+      }
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      setBulkUploadError("Server error: " + err.message);
+    } finally {
+      setLoadingBulkUpload(false);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type (text or CSV files)
+      const isValidFile = 
+        file.type.includes("text") || 
+        file.type.includes("csv") ||
+        file.name.endsWith(".txt") || 
+        file.name.endsWith(".csv");
+      
+      if (!isValidFile) {
+        setBulkUploadError("Please upload a text file (.txt) or CSV file (.csv)");
+        return;
+      }
+      setBulkUploadFile(file);
+      setBulkUploadError("");
+      setBulkUploadResults(null);
+    }
+  };
+
   // ============= VIEWS =============
   // All views are now handled in the main return statement below
 
@@ -1086,6 +1161,7 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
             { id: "applications", label: "Applications", icon: Users },
             { id: "catalog", label: "Catalog", icon: ShoppingCart },
             { id: "points", label: "Award Points", icon: Award },
+            { id: "bulk-upload", label: "Bulk Upload", icon: Upload },
             { id: "reports", label: "Reports", icon: FileText },
             { id: "account", label: "Account", icon: User },
           ].map((item) => (
@@ -1117,6 +1193,7 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
                view === "applications" ? "Applications" :
                view === "catalog" ? "Catalog" :
                view === "points" ? "Award Points" :
+               view === "bulk-upload" ? "Bulk Upload" :
                view === "reports" ? "Driver Points Report" :
                view === "account" ? "Account" : "Dashboard"}
             </h1>
@@ -1605,6 +1682,225 @@ export default function SponsorView({ user, onLogout, isImpersonated = false, or
                 )}
       </div>
             </>
+          )}
+
+          {view === "bulk-upload" && (
+            <div className="panel">
+              <div className="panel-header">
+                <h2>Bulk Upload Users</h2>
+              </div>
+
+              {!activeOrg ? (
+                <div className="empty-state">
+                  <Users className="w-12 h-12" />
+                  <p>Please set an active organization first to upload users.</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ marginBottom: "24px" }}>
+                    <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px" }}>File Format</h3>
+                    <div style={{ background: "#f9fafb", padding: "16px", borderRadius: "8px", marginBottom: "16px" }}>
+                      <p style={{ marginBottom: "8px", fontWeight: 600 }}>Format: <code>&lt;type&gt;||first name|last name|email address</code></p>
+                      <p style={{ marginBottom: "8px", fontSize: "14px", color: "#6b7280" }}>
+                        <strong>Note:</strong> Organization name field must be empty. Users will be added to your active organization: <strong>{activeOrg.name}</strong>
+                      </p>
+                      <div style={{ marginTop: "12px" }}>
+                        <p style={{ marginBottom: "4px" }}><strong>Type Values:</strong></p>
+                        <ul style={{ marginLeft: "20px", marginTop: "4px" }}>
+                          <li><code>D</code> - Driver Information</li>
+                          <li><code>S</code> - Sponsor Information</li>
+                        </ul>
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <p style={{ marginBottom: "4px" }}><strong>Rules:</strong></p>
+                        <ul style={{ marginLeft: "20px", marginTop: "4px", fontSize: "14px" }}>
+                          <li>Sponsors cannot use the "O" type (cannot create organizations)</li>
+                          <li>Organization name field must be empty (omitted)</li>
+                          <li>Data cannot contain the pipe "|" delimiter</li>
+                          <li>Any type other than D or S is an error</li>
+                          <li>Errors are reported but processing continues</li>
+                          <li>All users will be added to your active organization: <strong>{activeOrg.name}</strong></li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Select File</label>
+                    <input
+                      type="file"
+                      accept=".txt,.csv,text/plain,text/csv"
+                      onChange={handleFileChange}
+                      className="form-input"
+                      disabled={loadingBulkUpload}
+                      style={{ padding: "8px" }}
+                    />
+                    {bulkUploadFile && (
+                      <p className="form-help" style={{ color: "#16a34a", marginTop: "8px" }}>
+                        Selected: {bulkUploadFile.name} ({(bulkUploadFile.size / 1024).toFixed(2)} KB)
+                      </p>
+                    )}
+                  </div>
+
+                  {bulkUploadError && (
+                    <div className="alert alert-error">
+                      <XCircle className="w-5 h-5" />
+                      <p>{bulkUploadError}</p>
+                    </div>
+                  )}
+
+                  <div className="modal-actions" style={{ marginTop: "24px" }}>
+                    <button
+                      onClick={handleBulkUpload}
+                      className="btn btn-primary"
+                      disabled={!bulkUploadFile || loadingBulkUpload || !activeOrg}
+                    >
+                      {loadingBulkUpload ? (
+                        <>
+                          <Activity className="w-5 h-5 animate-spin" style={{ marginRight: "8px" }} />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-5 h-5" style={{ marginRight: "8px" }} />
+                          Upload & Process
+                        </>
+                      )}
+                    </button>
+                    {bulkUploadFile && (
+                      <button
+                        onClick={() => {
+                          setBulkUploadFile(null);
+                          setBulkUploadResults(null);
+                          setBulkUploadError("");
+                        }}
+                        className="btn btn-secondary"
+                        disabled={loadingBulkUpload}
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  {bulkUploadResults && (
+                    <div style={{ marginTop: "32px" }}>
+                      <h3 style={{ fontSize: "18px", fontWeight: 600, marginBottom: "16px" }}>Upload Results</h3>
+                      
+                      <div style={{ 
+                        background: "#f0fdf4", 
+                        border: "1px solid #bbf7d0", 
+                        borderRadius: "8px", 
+                        padding: "16px", 
+                        marginBottom: "24px" 
+                      }}>
+                        <h4 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px", color: "#16a34a" }}>
+                          Summary
+                        </h4>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+                          <div>
+                            <p style={{ fontSize: "14px", color: "#6b7280" }}>Total Lines</p>
+                            <p style={{ fontSize: "20px", fontWeight: 700, color: "#1f2937" }}>
+                              {bulkUploadResults.summary.totalLines}
+                            </p>
+                          </div>
+                          <div>
+                            <p style={{ fontSize: "14px", color: "#6b7280" }}>Drivers Created</p>
+                            <p style={{ fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+                              {bulkUploadResults.summary.driversCreated}
+                            </p>
+                          </div>
+                          <div>
+                            <p style={{ fontSize: "14px", color: "#6b7280" }}>Sponsors Created</p>
+                            <p style={{ fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+                              {bulkUploadResults.summary.sponsorsCreated}
+                            </p>
+                          </div>
+                          <div>
+                            <p style={{ fontSize: "14px", color: "#6b7280" }}>Successful</p>
+                            <p style={{ fontSize: "20px", fontWeight: 700, color: "#16a34a" }}>
+                              {bulkUploadResults.summary.successCount}
+                            </p>
+                          </div>
+                          <div>
+                            <p style={{ fontSize: "14px", color: "#6b7280" }}>Errors</p>
+                            <p style={{ fontSize: "20px", fontWeight: 700, color: "#dc2626" }}>
+                              {bulkUploadResults.summary.errorCount}
+                            </p>
+                          </div>
+                        </div>
+                        <p style={{ marginTop: "12px", fontSize: "14px", color: "#6b7280" }}>
+                          Organization: <strong>{bulkUploadResults.organization}</strong>
+                        </p>
+                      </div>
+
+                      {bulkUploadResults.results.success.length > 0 && (
+                        <div style={{ marginBottom: "24px" }}>
+                          <h4 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px", color: "#16a34a" }}>
+                            Successful Operations ({bulkUploadResults.results.success.length})
+                          </h4>
+                          <div style={{ 
+                            background: "#f9fafb", 
+                            border: "1px solid #e5e7eb", 
+                            borderRadius: "8px", 
+                            maxHeight: "300px", 
+                            overflowY: "auto",
+                            padding: "12px"
+                          }}>
+                            {bulkUploadResults.results.success.map((item, idx) => (
+                              <div key={idx} style={{ 
+                                padding: "8px", 
+                                marginBottom: "4px", 
+                                background: "white", 
+                                borderRadius: "4px",
+                                fontSize: "14px"
+                              }}>
+                                <span style={{ fontWeight: 600, color: "#6b7280" }}>Line {item.line}:</span>{" "}
+                                <span style={{ color: "#1f2937" }}>{item.content}</span>
+                                <div style={{ marginTop: "4px", color: "#16a34a", fontSize: "13px" }}>
+                                  ✓ {item.message}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {bulkUploadResults.results.errors.length > 0 && (
+                        <div>
+                          <h4 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "12px", color: "#dc2626" }}>
+                            Errors ({bulkUploadResults.results.errors.length})
+                          </h4>
+                          <div style={{ 
+                            background: "#fef2f2", 
+                            border: "1px solid #fecaca", 
+                            borderRadius: "8px", 
+                            maxHeight: "400px", 
+                            overflowY: "auto",
+                            padding: "12px"
+                          }}>
+                            {bulkUploadResults.results.errors.map((item, idx) => (
+                              <div key={idx} style={{ 
+                                padding: "8px", 
+                                marginBottom: "4px", 
+                                background: "white", 
+                                borderRadius: "4px",
+                                fontSize: "14px"
+                              }}>
+                                <span style={{ fontWeight: 600, color: "#6b7280" }}>Line {item.line}:</span>{" "}
+                                <span style={{ color: "#1f2937" }}>{item.content}</span>
+                                <div style={{ marginTop: "4px", color: "#dc2626", fontSize: "13px" }}>
+                                  ✗ {item.error}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           )}
 
           {view === "reports" && (

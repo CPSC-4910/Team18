@@ -2,6 +2,10 @@ import express from "express";
 import Organization from "../models/Organization.js";
 import OrganizationCatalog from "../models/OrganizationCatalog.js";
 import SponsorOrganizationLink from "../models/SponsorOrganizationLink.js";
+import DriverOrganizationLink from "../models/DriverOrganizationLink.js";
+import User from "../models/User.js";
+import bcrypt from "bcrypt";
+import { Op } from "sequelize";
 
 const router = express.Router();
 
@@ -217,6 +221,348 @@ router.post("/join", async (req, res) => {
   } catch (err) {
     console.error("Error joining organization:", err);
     res.status(500).json({ error: "Failed to join organization" });
+  }
+});
+
+// POST /api/organizations/bulk-upload - Bulk upload organizations, drivers, and sponsors
+router.post("/bulk-upload", async (req, res) => {
+  try {
+    const { fileContent, adminUsername } = req.body;
+
+    if (!fileContent) {
+      return res.status(400).json({ error: "File content is required" });
+    }
+
+    const lines = fileContent.split(/\r?\n/).filter(line => line.trim().length > 0);
+    const results = {
+      success: [],
+      errors: [],
+      organizationsCreated: 0,
+      driversCreated: 0,
+      sponsorsCreated: 0,
+    };
+
+    // Track organizations created in this upload session
+    const createdOrganizations = new Map();
+
+    // Helper function to get or create organization
+    const getOrCreateOrganization = async (orgName) => {
+      // Check if we created it in this session
+      if (createdOrganizations.has(orgName)) {
+        return createdOrganizations.get(orgName);
+      }
+
+      // Check if it exists in database
+      let org = await Organization.findOne({ where: { name: orgName } });
+      
+      if (!org) {
+        // Organization doesn't exist - this is an error
+        return null;
+      }
+
+      return org;
+    };
+
+    // Process each line
+    for (let i = 0; i < lines.length; i++) {
+      const lineNumber = i + 1;
+      const line = lines[i].trim();
+
+      if (!line) continue;
+
+      // Check if line contains pipe delimiter
+      if (!line.includes("|")) {
+        results.errors.push({
+          line: lineNumber,
+          content: line,
+          error: "Line does not contain pipe delimiter"
+        });
+        continue;
+      }
+
+      const parts = line.split("|").map(part => part.trim());
+      const type = parts[0];
+
+      // Validate type
+      if (!["O", "D", "S"].includes(type)) {
+        results.errors.push({
+          line: lineNumber,
+          content: line,
+          error: `Invalid type '${type}'. Must be O, D, or S`
+        });
+        continue;
+      }
+
+      try {
+        // Process Organization (type O)
+        if (type === "O") {
+          if (parts.length < 2 || !parts[1]) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: "Organization name is required for type O"
+            });
+            continue;
+          }
+
+          const orgName = parts[1];
+
+          // Check if organization already exists
+          const existingOrg = await Organization.findOne({ where: { name: orgName } });
+          if (existingOrg) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: `Organization '${orgName}' already exists`
+            });
+            continue;
+          }
+
+          // Create organization
+          const newOrg = await Organization.create({
+            name: orgName,
+            created_by: adminUsername || null,
+            status: "active",
+            created_at: new Date(),
+          });
+
+          createdOrganizations.set(orgName, newOrg);
+          results.organizationsCreated++;
+          results.success.push({
+            line: lineNumber,
+            content: line,
+            message: `Organization '${orgName}' created successfully`
+          });
+        }
+
+        // Process Driver (type D)
+        else if (type === "D") {
+          if (parts.length < 5) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: "Driver record requires: D|organization name|first name|last name|email address"
+            });
+            continue;
+          }
+
+          const orgName = parts[1];
+          const firstName = parts[2];
+          const lastName = parts[3];
+          const email = parts[4];
+
+          // Validate required fields
+          if (!orgName || !firstName || !lastName || !email) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: "All fields are required for driver record"
+            });
+            continue;
+          }
+
+          // Validate email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: `Invalid email format: ${email}`
+            });
+            continue;
+          }
+
+          // Get or create organization
+          const org = await getOrCreateOrganization(orgName);
+          if (!org) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: `Organization '${orgName}' does not exist. It must exist in the system or be created via an 'O' record earlier in this file.`
+            });
+            continue;
+          }
+
+          // Generate username from first and last name
+          const baseUsername = `${firstName.toLowerCase()}${lastName.toLowerCase()}`;
+          let username = baseUsername;
+          let counter = 1;
+
+          // Ensure unique username
+          while (await User.findOne({ where: { username } })) {
+            username = `${baseUsername}${counter}`;
+            counter++;
+          }
+
+          // Check if email already exists
+          const existingUser = await User.findOne({ where: { email } });
+          if (existingUser) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: `Email '${email}' already exists`
+            });
+            continue;
+          }
+
+          // Generate default password (first name + last name + "123")
+          const defaultPassword = `${firstName}${lastName}123`;
+          const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+          // Create driver user
+          const newDriver = await User.create({
+            username,
+            email,
+            password: hashedPassword,
+            role: "driver",
+            created_at: new Date(),
+          });
+
+          // Link driver to organization
+          await DriverOrganizationLink.create({
+            driver_username: username,
+            organization_id: org.id,
+            joined_at: new Date(),
+          });
+
+          results.driversCreated++;
+          results.success.push({
+            line: lineNumber,
+            content: line,
+            message: `Driver '${username}' created and linked to '${orgName}'`
+          });
+        }
+
+        // Process Sponsor (type S)
+        else if (type === "S") {
+          if (parts.length < 5) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: "Sponsor record requires: S|organization name|first name|last name|email address"
+            });
+            continue;
+          }
+
+          const orgName = parts[1];
+          const firstName = parts[2];
+          const lastName = parts[3];
+          const email = parts[4];
+
+          // Validate required fields
+          if (!orgName || !firstName || !lastName || !email) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: "All fields are required for sponsor record"
+            });
+            continue;
+          }
+
+          // Validate email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: `Invalid email format: ${email}`
+            });
+            continue;
+          }
+
+          // Get or create organization
+          const org = await getOrCreateOrganization(orgName);
+          if (!org) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: `Organization '${orgName}' does not exist. It must exist in the system or be created via an 'O' record earlier in this file.`
+            });
+            continue;
+          }
+
+          // Generate username from first and last name
+          const baseUsername = `${firstName.toLowerCase()}${lastName.toLowerCase()}`;
+          let username = baseUsername;
+          let counter = 1;
+
+          // Ensure unique username
+          while (await User.findOne({ where: { username } })) {
+            username = `${baseUsername}${counter}`;
+            counter++;
+          }
+
+          // Check if email already exists
+          const existingUser = await User.findOne({ where: { email } });
+          if (existingUser) {
+            results.errors.push({
+              line: lineNumber,
+              content: line,
+              error: `Email '${email}' already exists`
+            });
+            continue;
+          }
+
+          // Generate default password (first name + last name + "123")
+          const defaultPassword = `${firstName}${lastName}123`;
+          const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+          // Create sponsor user
+          const newSponsor = await User.create({
+            username,
+            email,
+            password: hashedPassword,
+            role: "sponsor",
+            created_at: new Date(),
+          });
+
+          // Link sponsor to organization
+          // Deactivate all other organizations for this sponsor first
+          await SponsorOrganizationLink.update(
+            { is_active: false },
+            { where: { sponsor_username: username } }
+          );
+
+          await SponsorOrganizationLink.create({
+            sponsor_username: username,
+            organization_id: org.id,
+            role: "member",
+            is_active: true,
+            joined_at: new Date(),
+          });
+
+          results.sponsorsCreated++;
+          results.success.push({
+            line: lineNumber,
+            content: line,
+            message: `Sponsor '${username}' created and linked to '${orgName}'`
+          });
+        }
+      } catch (err) {
+        console.error(`Error processing line ${lineNumber}:`, err);
+        results.errors.push({
+          line: lineNumber,
+          content: line,
+          error: err.message || "Unknown error processing line"
+        });
+      }
+    }
+
+    res.json({
+      message: "Bulk upload completed",
+      summary: {
+        totalLines: lines.length,
+        organizationsCreated: results.organizationsCreated,
+        driversCreated: results.driversCreated,
+        sponsorsCreated: results.sponsorsCreated,
+        successCount: results.success.length,
+        errorCount: results.errors.length,
+      },
+      results,
+    });
+  } catch (err) {
+    console.error("Error processing bulk upload:", err);
+    res.status(500).json({ error: "Failed to process bulk upload", details: err.message });
   }
 });
 
