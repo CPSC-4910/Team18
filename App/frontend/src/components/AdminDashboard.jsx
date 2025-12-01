@@ -6,6 +6,8 @@ import {
   XCircle, Trash2, Download, FileText, User, Lock, Edit, Shield, Upload
 } from 'lucide-react';
 
+import CatalogViewer from './CatalogViewer';
+
 // Modal Component
 const AddUserModal = ({
   onClose,
@@ -151,9 +153,9 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
   const [adminFormSuccess, setAdminFormSuccess] = useState("");
   
   // Catalog states
-  const [catalog, setCatalog] = useState([]);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("truck");
+  //const [catalog, setCatalog] = useState([]);
+  //const [loadingCatalog, setLoadingCatalog] = useState(false);
+  //const [searchTerm, setSearchTerm] = useState("truck");
   
   // Report filters
   const [reportFilter, setReportFilter] = useState({
@@ -239,7 +241,7 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
     if (activeTab === "reports") {
       loadAllTransactions();
     }
-    if (activeTab === "catalog") loadCatalog(searchTerm);
+    //if (activeTab === "catalog") loadCatalog(searchTerm);
     if (activeTab === "settings") {
       setEditEmail(user?.email || "");
     }
@@ -505,7 +507,7 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
       setLoading(false);
     }
   };
-
+  /*
   const loadCatalog = async (query) => {
     setLoadingCatalog(true);
     try {
@@ -518,7 +520,7 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
       setLoadingCatalog(false);
     }
   };
-
+  */
   const loadSalesBySponsor = async () => {
     setLoadingSalesBySponsor(true);
     try {
@@ -2670,43 +2672,10 @@ export default function AdminDashboard({ user, onLogout, onImpersonateDriver, on
   };
 
   const renderCatalog = () => (
-    <div className="content-area">
-      <div className="panel">
-        <h2>eBay Catalog Preview</h2>
-        <div className="search-bar">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search eBay..."
-            className="form-input"
-          />
-          <button onClick={() => loadCatalog(searchTerm)} className="btn btn-primary">
-            Search
-          </button>
-        </div>
-        {loadingCatalog ? (
-          <div className="loading-state">
-            <Activity className="w-8 h-8 animate-spin" />
-            <p>Loading eBay items...</p>
-          </div>
-        ) : (
-          <div className="catalog-grid">
-            {catalog.map((item) => (
-              <div key={item.itemId} className="catalog-card">
-                <img src={item.image?.imageUrl} alt={item.title} />
-                <h3>{item.title}</h3>
-                <p className="price">${item.price?.value} {item.price?.currency}</p>
-                <a href={item.itemWebUrl} target="_blank" rel="noopener noreferrer" className="catalog-link">
-                  View on eBay →
-                </a>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  <div className="content-area">
+    <CatalogViewer />
+  </div>
+);
 
   // ===== Main Render =====
   return (
