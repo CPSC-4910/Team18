@@ -16,7 +16,7 @@ const StatsCard = ({ icon: Icon, title, value, color = "#3b82f6" }) => (
   </div>
 );
 
-export default function DriverView({ user, onLogout, isAssumedBySponsor = false, actualSponsor = null }) {
+export default function DriverView({ user, onLogout, isImpersonated = false, originalAdmin = null, onExitImpersonation = null }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [organizations, setOrganizations] = useState([]);
   const [selectedOrg, setSelectedOrg] = useState("");
@@ -61,6 +61,10 @@ export default function DriverView({ user, onLogout, isAssumedBySponsor = false,
   const [orderUpdateItems, setOrderUpdateItems] = useState([]); // Items to add to order
 
   useEffect(() => {
+    if (!user || !user.username) {
+      console.error("DriverView: user or user.username is missing");
+      return;
+    }
     loadOrganizations();
     loadMyApplications();
     loadMyMemberships();
@@ -106,6 +110,7 @@ export default function DriverView({ user, onLogout, isAssumedBySponsor = false,
   // Load My Applications
   // ------------------------------------------------------------
   async function loadMyApplications() {
+    if (!user || !user.username) return;
     try {
       const res = await fetch(`/api/applications/by-driver/${user.username}`);
       const data = await res.json();
@@ -119,6 +124,7 @@ export default function DriverView({ user, onLogout, isAssumedBySponsor = false,
   // Load My Accepted Memberships + Points
   // ------------------------------------------------------------
   async function loadMyMemberships() {
+    if (!user || !user.username) return;
     try {
       const res = await fetch(`/api/memberships/${user.username}`);
       const data = await res.json();
@@ -700,10 +706,55 @@ export default function DriverView({ user, onLogout, isAssumedBySponsor = false,
   const acceptedApps = apps.filter(app => app.status === "accepted").length;
 
   // Main render with sidebar
+  if (!user || !user.username) {
+    return (
+      <div style={{ padding: "20px", textAlign: "center" }}>
+        <p>Loading user data...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="driver-dashboard">
+      {/* Impersonation Banner */}
+      {isImpersonated && originalAdmin && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+          color: "white",
+          padding: "12px 24px",
+          zIndex: 10000,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <Shield className="w-5 h-5" />
+            <span style={{ fontWeight: 600 }}>
+              Viewing as <strong>{user.username}</strong> ({originalAdmin.role === "admin" ? "Admin" : "Sponsor"}: {originalAdmin.username})
+            </span>
+          </div>
+          <button
+            onClick={onExitImpersonation}
+            className="btn btn-secondary btn-sm"
+            style={{
+              background: "rgba(255,255,255,0.2)",
+              border: "1px solid rgba(255,255,255,0.3)",
+              color: "white",
+              fontWeight: 600
+            }}
+          >
+            Exit Impersonation
+          </button>
+        </div>
+      )}
+      
       {/* Sidebar */}
-      <aside className={`sidebar ${sidebarOpen ? "open" : "closed"}`}>
+      <aside className={`sidebar ${sidebarOpen ? "open" : "closed"}`} style={isImpersonated ? { marginTop: "48px" } : {}}>
         <div className="sidebar-header">
           {sidebarOpen && <h1>Driver Panel</h1>}
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="sidebar-toggle">
@@ -747,41 +798,8 @@ export default function DriverView({ user, onLogout, isAssumedBySponsor = false,
       </aside>
 
       {/* Main Content */}
-      <main className="main-content">
+      <main className="main-content" style={isImpersonated ? { marginTop: "48px" } : {}}>
         <header className="page-header">
-        {/* Sponsor Assumption Banner */}
-        {isAssumedBySponsor && actualSponsor && (
-          <div style={{
-            background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
-            border: "2px solid #f59e0b",
-            borderRadius: "12px",
-            padding: "16px 24px",
-            margin: "0 32px 24px 32px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            boxShadow: "0 4px 12px rgba(245, 158, 11, 0.2)"
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <Shield className="w-6 h-6" style={{ color: "#d97706" }} />
-              <div>
-                <p style={{ margin: 0, fontWeight: 700, color: "#92400e", fontSize: "16px" }}>
-                  Sponsor Control Active
-                </p>
-                <p style={{ margin: "4px 0 0 0", fontSize: "14px", color: "#78350f" }}>
-                  You are viewing and controlling <strong>{user.username}</strong>'s account as sponsor <strong>{actualSponsor.username}</strong>
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={onLogout}
-              className="btn btn-secondary"
-              style={{ background: "white", border: "2px solid #f59e0b" }}
-            >
-              <X className="w-4 h-4" /> Stop Assuming
-            </button>
-          </div>
-        )}
           <div>
             <h1 className="page-title">
               {view === "dashboard" ? "Dashboard" : 

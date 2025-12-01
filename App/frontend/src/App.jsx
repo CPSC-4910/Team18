@@ -12,7 +12,8 @@ import ForgotPasswordView from "./components/ForgotPasswordView.jsx";
 export default function App() {
   const [view, setView] = useState("about");
   const [user, setUser] = useState(null);
-  const [assumedDriver, setAssumedDriver] = useState(null); // NEW: For sponsor assuming driver role
+  const [impersonatedUser, setImpersonatedUser] = useState(null);
+  const [originalAdminUser, setOriginalAdminUser] = useState(null);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -25,18 +26,6 @@ export default function App() {
       } catch (error) {
         console.error("Error loading user session:", error);
         localStorage.removeItem("user");
-      }
-    }
-
-    // NEW: Check for assumed driver session
-    const savedAssumedDriver = localStorage.getItem("assumedDriver");
-    if (savedAssumedDriver) {
-      try {
-        const assumedDriverData = JSON.parse(savedAssumedDriver);
-        setAssumedDriver(assumedDriverData);
-      } catch (error) {
-        console.error("Error loading assumed driver session:", error);
-        localStorage.removeItem("assumedDriver");
       }
     }
   }, []);
@@ -71,74 +60,129 @@ export default function App() {
     }
   };
 
-  const handleLoginSuccess = (userData) => {
-    setUser(userData);
-    localStorage.setItem("user", JSON.stringify(userData));
+const handleLoginSuccess = (userData) => {
+  setUser(userData);
+  localStorage.setItem("user", JSON.stringify(userData));
 
-    // ✅ Redirect based on user role
-    if (userData.role === "admin") {
-      setView("admin");
-      history.pushState({ v: "admin" }, "", "#/admin");
-    } else if (userData.role === "sponsor") {
-      setView("sponsor");
-      history.pushState({ v: "sponsor" }, "", "#/sponsor");
-    } else if (userData.role === "driver") {
-      setView("driver");
-      history.pushState({ v: "driver" }, "", "#/driver");
-    } else {
-      // fallback
-      setView("about");
-      history.pushState({ v: "about" }, "", "#/about");
-    }
-  };
+  // ✅ Redirect based on user role
+  if (userData.role === "admin") {
+    setView("admin");
+    history.pushState({ v: "admin" }, "", "#/admin");
+  } else if (userData.role === "sponsor") {
+    setView("sponsor");
+    history.pushState({ v: "sponsor" }, "", "#/sponsor");
+  } else if (userData.role === "driver") {
+    setView("driver");
+    history.pushState({ v: "driver" }, "", "#/driver");
+  } else {
+    // fallback
+    setView("about");
+    history.pushState({ v: "about" }, "", "#/about");
+  }
+};
 
   const handleLogout = () => {
     setUser(null);
-    setAssumedDriver(null); // NEW: Clear assumed driver on logout
     localStorage.removeItem("user");
-    localStorage.removeItem("assumedDriver"); // NEW: Clear assumed driver from storage
     setView("about");
     history.pushState({ v: "about" }, "", "#/about");
   };
 
-  // NEW: Handle sponsor assuming driver role
-  const handleAssumeDriver = (driverData) => {
-    setAssumedDriver(driverData);
-    localStorage.setItem("assumedDriver", JSON.stringify(driverData));
+  // Handle admin impersonating a driver
+  const handleImpersonateDriver = (driverData) => {
+    // Store the original admin user
+    setOriginalAdminUser(user);
+    // Ensure the driver object has all required fields
+    const impersonatedDriver = {
+      username: driverData.username,
+      email: driverData.email || "",
+      role: "driver",
+      last_login: driverData.last_login || null,
+      created_at: driverData.created_at || new Date().toISOString(),
+    };
+    // Set the impersonated driver as the current user
+    setImpersonatedUser(impersonatedDriver);
+    // Switch to driver view
     setView("driver");
     history.pushState({ v: "driver" }, "", "#/driver");
   };
 
-  // NEW: Handle sponsor stopping assumption of driver role
-  const handleStopAssuming = () => {
-    setAssumedDriver(null);
-    localStorage.removeItem("assumedDriver");
+  // Handle admin impersonating a sponsor
+  const handleImpersonateSponsor = (sponsorData) => {
+    // Store the original admin user
+    setOriginalAdminUser(user);
+    // Ensure the sponsor object has all required fields
+    const impersonatedSponsor = {
+      username: sponsorData.username,
+      email: sponsorData.email || "",
+      role: "sponsor",
+      last_login: sponsorData.last_login || null,
+      created_at: sponsorData.created_at || new Date().toISOString(),
+    };
+    // Set the impersonated sponsor as the current user
+    setImpersonatedUser(impersonatedSponsor);
+    // Switch to sponsor view
     setView("sponsor");
     history.pushState({ v: "sponsor" }, "", "#/sponsor");
   };
 
-  // If user is logged in and viewing dashboard, show only dashboard
-  if (user) {
-    // NEW: If sponsor is assuming a driver role, show DriverView
-    if (assumedDriver && user.role === "sponsor") {
-      return (
-        <DriverView 
-          user={assumedDriver} 
-          onLogout={handleStopAssuming} 
-          isAssumedBySponsor={true}
-          actualSponsor={user}
-        />
-      );
+  // Handle exiting impersonation
+  const handleExitImpersonation = () => {
+    if (!originalAdminUser) return;
+    
+    setImpersonatedUser(null);
+    const originalUser = originalAdminUser;
+    setOriginalAdminUser(null);
+    setUser(originalUser);
+    
+    // Return to the appropriate view based on the original user's role
+    if (originalUser.role === "admin") {
+      setView("admin");
+      history.pushState({ v: "admin" }, "", "#/admin");
+    } else if (originalUser.role === "sponsor") {
+      setView("sponsor");
+      history.pushState({ v: "sponsor" }, "", "#/sponsor");
     }
+  };
 
-    if (view === "admin") {
-      return <AdminDashboard user={user} onLogout={handleLogout} />;
-    } else if (view === "sponsor") {
-      return <SponsorView user={user} onLogout={handleLogout} onAssumeDriver={handleAssumeDriver} />;
-    } else if (view === "driver") {
-      return <DriverView user={user} onLogout={handleLogout} />;
+  // Handle sponsor impersonating a driver
+  const handleSponsorImpersonateDriver = (driverData) => {
+    // Store the original sponsor user
+    setOriginalAdminUser(user);
+    // Ensure the driver object has all required fields
+    const impersonatedDriver = {
+      username: driverData.username,
+      email: driverData.email || "",
+      role: "driver",
+      last_login: driverData.last_login || null,
+      created_at: driverData.created_at || new Date().toISOString(),
+    };
+    // Set the impersonated driver as the current user
+    setImpersonatedUser(impersonatedDriver);
+    // Switch to driver view
+    setView("driver");
+    history.pushState({ v: "driver" }, "", "#/driver");
+  };
+
+  // If user is logged in and viewing dashboard, show only dashboard
+if (user) {
+  // If impersonating a user, show the appropriate view with impersonated user
+  if (impersonatedUser) {
+    if (impersonatedUser.role === "driver") {
+      return <DriverView user={impersonatedUser} onLogout={handleExitImpersonation} isImpersonated={true} originalAdmin={originalAdminUser} onExitImpersonation={handleExitImpersonation} />;
+    } else if (impersonatedUser.role === "sponsor") {
+      return <SponsorView user={impersonatedUser} onLogout={handleExitImpersonation} isImpersonated={true} originalAdmin={originalAdminUser} onExitImpersonation={handleExitImpersonation} />;
     }
   }
+  
+  if (view === "admin") {
+    return <AdminDashboard user={user} onLogout={handleLogout} onImpersonateDriver={handleImpersonateDriver} onImpersonateSponsor={handleImpersonateSponsor} />;
+  } else if (view === "sponsor") {
+    return <SponsorView user={user} onLogout={handleLogout} onImpersonateDriver={handleSponsorImpersonateDriver} />;
+  } else if (view === "driver") {
+    return <DriverView user={user} onLogout={handleLogout} />;
+  }
+}
 
   // Otherwise show the normal app with header/footer
   return (
